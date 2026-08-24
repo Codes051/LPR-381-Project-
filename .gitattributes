@@ -1,0 +1,26 @@
+# Normalise line endings so three machines with different git settings do not
+# produce whole-file diffs where nothing actually changed.
+
+# Default: let git decide, store LF in the repository.
+* text=auto
+
+# Visual Studio expects CRLF in the working tree for these.
+*.cs        text eol=crlf
+*.csproj    text eol=crlf
+*.sln       text eol=crlf
+*.config    text eol=crlf
+*.props     text eol=crlf
+*.targets   text eol=crlf
+*.editorconfig text eol=crlf
+
+# Model input and output files are read on Windows, keep them CRLF too.
+*.txt       text eol=crlf
+
+# Docs are fine either way, pin them so they never churn.
+*.md        text eol=lf
+
+# Never touch these.
+*.pdf       binary
+*.png       binary
+*.jpg       binary
+*.mp4       binary

@@ -502,15 +502,14 @@ public class RevisedPrimalSimplexSolver : ISolver
 
         internal double[] DecisionValues(CanonicalMatrix model)
         {
-            var values = new double[model.DecisionVariableCount];
+            var columnValues = new double[model.ColumnCount];
 
             for (var r = 0; r < Basis.Length; r++)
-            {
-                if (Basis[r] < values.Length)
-                    values[Basis[r]] = BasicValues[r];
-            }
+                columnValues[Basis[r]] = BasicValues[r];
 
-            return values;
+            // Not a straight copy of the leading columns: a variable declared urs or - was
+            // substituted away during canonicalization and has to be reassembled.
+            return model.RecoverOriginalValues(columnValues);
         }
 
         /// <summary>
@@ -553,7 +552,8 @@ public class RevisedPrimalSimplexSolver : ISolver
                 (bool[])model.IsBinaryMask.Clone())
             {
                 OriginalObjectiveType = model.OriginalObjectiveType,
-                ColumnTypes = model.ColumnTypes == null ? null : (VariableType[])model.ColumnTypes.Clone()
+                ColumnTypes = model.ColumnTypes == null ? null : (VariableType[])model.ColumnTypes.Clone(),
+                VariableMap = model.VariableMap
             };
         }
     }

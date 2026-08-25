@@ -162,10 +162,31 @@ public class OutputWriter
         if (result.VariableValues == null || result.VariableValues.Length == 0)
             return;
 
-        var labels = result.FinalTableau != null ? result.FinalTableau.ColumnLabels : null;
+        // VariableValues holds the variables as the user declared them, which is NOT the same
+        // as the leading columns once a urs or - restriction has been substituted away. Naming
+        // these from ColumnLabels would print a recovered value under a stand-in column name.
+        var map = result.FinalTableau != null ? result.FinalTableau.VariableMap : null;
+        var substituted = new List<string>();
 
         for (var j = 0; j < result.VariableValues.Length; j++)
-            WriteLine($"  {LabelAt(labels, j, "x" + (j + 1))} = {Format(result.VariableValues[j])}");
+        {
+            var name = map != null && j < map.Length ? map[j].Name : "x" + (j + 1);
+            WriteLine($"  {name} = {Format(result.VariableValues[j])}");
+
+            if (map != null && j < map.Length && !map[j].IsDirect)
+            {
+                substituted.Add(map[j].NegativeColumn >= 0
+                    ? $"{map[j].Name} was declared urs and appears in the tableau split as " +
+                      $"{map[j].Name}+ minus {map[j].Name}-"
+                    : $"{map[j].Name} was declared non-positive and appears in the tableau as " +
+                      $"{map[j].Name}', which holds its negation");
+            }
+        }
+
+        // Without this the tableau columns and the reported answer look inconsistent to anyone
+        // reading the output file, which is exactly what a marker will be doing.
+        foreach (var note in substituted)
+            WriteWrapped("  Note: " + note + ".");
     }
 
     /// <summary>

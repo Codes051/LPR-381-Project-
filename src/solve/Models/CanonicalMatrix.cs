@@ -51,6 +51,13 @@ public class CanonicalMatrix
     /// </remarks>
     public VariableType[] ColumnTypes { get; set; }
 
+    /// <summary>
+    /// One entry per variable as the user wrote it, saying which column or columns represent
+    /// it. Set by the canonicalizer. See <see cref="VariableMapping"/> for why this is not
+    /// simply the identity.
+    /// </summary>
+    public VariableMapping[] VariableMap { get; set; }
+
     /// <summary>Whether the source model was a Min, so callers know to flip the objective back.</summary>
     public ProblemType OriginalObjectiveType { get; set; } = ProblemType.Max;
 
@@ -91,6 +98,49 @@ public class CanonicalMatrix
             return count;
         }
     }
+
+    /// <summary>
+    /// Turns a full row of column values into the values of the variables the user actually
+    /// declared, undoing any substitution made for a <c>-</c> or <c>urs</c> restriction.
+    /// </summary>
+    /// <param name="columnValues">
+    /// One entry per grid column: the value of that column in the current solution, zero for
+    /// anything non-basic.
+    /// </param>
+    public double[] RecoverOriginalValues(double[] columnValues)
+    {
+        if (columnValues == null)
+            throw new ArgumentNullException(nameof(columnValues));
+
+        // No map means no substitution happened, so the leading decision columns are the
+        // variables. Keeps older callers and hand-built matrices working.
+        if (VariableMap == null)
+        {
+            var plain = new double[DecisionVariableCount];
+            for (var j = 0; j < plain.Length && j < columnValues.Length; j++)
+                plain[j] = columnValues[j];
+
+            return plain;
+        }
+
+        var values = new double[VariableMap.Length];
+
+        for (var i = 0; i < VariableMap.Length; i++)
+        {
+            var map = VariableMap[i];
+            var value = Read(columnValues, map.PositiveColumn);
+
+            if (map.NegativeColumn >= 0)
+                value -= Read(columnValues, map.NegativeColumn);
+
+            values[i] = map.Scale * value;
+        }
+
+        return values;
+    }
+
+    private static double Read(double[] values, int index) =>
+        index >= 0 && index < values.Length ? values[index] : 0.0;
 
     /// <summary>True if the given grid column holds an artificial variable.</summary>
     public bool IsArtificial(int column) =>
@@ -215,7 +265,9 @@ public class CanonicalMatrix
         return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
         {
             OriginalObjectiveType = OriginalObjectiveType,
-            ColumnTypes = types
+            ColumnTypes = types,
+            // Existing variable columns keep their indices, so the map is still correct.
+            VariableMap = VariableMap
         };
     }
 
@@ -234,7 +286,8 @@ public class CanonicalMatrix
         return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
         {
             OriginalObjectiveType = OriginalObjectiveType,
-            ColumnTypes = ColumnTypes == null ? null : (VariableType[])ColumnTypes.Clone()
+            ColumnTypes = ColumnTypes == null ? null : (VariableType[])ColumnTypes.Clone(),
+            VariableMap = VariableMap
         };
     }
 }

@@ -375,18 +375,16 @@ public class PrimalSimplexSolver : ISolver
 
     private static double[] ExtractVariableValues(CanonicalMatrix work)
     {
-        var values = new double[work.DecisionVariableCount];
-
         // Anything not in the basis is non-basic and therefore zero, which the array already
-        // holds, so only the basic decision variables need reading out.
-        for (var i = 1; i < work.RowCount; i++)
-        {
-            var basic = work.BasicVariables[i - 1];
-            if (basic < values.Length)
-                values[basic] = work.Grid[i, work.RhsColumn];
-        }
+        // holds, so only the basic columns need reading out.
+        var columnValues = new double[work.ColumnCount];
 
-        return values;
+        for (var i = 1; i < work.RowCount; i++)
+            columnValues[work.BasicVariables[i - 1]] = work.Grid[i, work.RhsColumn];
+
+        // Not a straight copy of the leading columns: a variable declared urs or - was
+        // substituted away during canonicalization and has to be reassembled.
+        return work.RecoverOriginalValues(columnValues);
     }
 
     private static bool HasArtificials(CanonicalMatrix work)

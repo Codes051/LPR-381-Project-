@@ -86,6 +86,11 @@ samples/                      test models, copied next to the exe
 | `ip_integer.txt` | Integer (not binary) model for branch & bound and cutting plane |
 | `lp_max_4var.txt` | 4 variables, 4 constraints — a wider model for the "random amount of variables" criterion (z = 113.846) |
 | `lp_min_5con.txt` | 4 variables, 5 constraints, all three relations, Min objective — the heaviest two-phase case (z = 22) |
+| `t_urs.txt` | An `urs` variable whose optimum is negative (z = 8 at x2 = −3) |
+| `t_negative.txt` | A `-` variable, required to be non-positive (z = 17 at x2 = −7) |
+| `t_degenerate.txt` | Two constraints tight at the optimum — exercises the anti-cycling tie-break (z = 18) |
+| `t_equalities.txt` | Every row an `=`, so the basis is entirely artificial (z = 23) |
+| `t_altoptima.txt` | Objective parallel to a constraint, so a whole edge is optimal (z = 16) |
 | `unbounded.txt` | Must be reported as unbounded, not crash |
 | `infeasible.txt` | Must be reported as infeasible, not crash |
 
@@ -110,7 +115,7 @@ feasible solution, so they are safe to assert against in a test.
 
 ## Contract details that are easy to get wrong
 
-Five things about the shared types that aren't obvious from their signatures. Each one fails
+Six things about the shared types that aren't obvious from their signatures. Each one fails
 silently rather than loudly, so read them before writing a solver.
 
 **Your first recorded tableau must be the canonical form.** `OutputWriter.WriteResult`
@@ -148,6 +153,23 @@ a column is a decision, slack, surplus or artificial variable, with `IsArtificia
 `DecisionVariableCount` as shortcuts. The labels (`x1`, `s1`, `e2`, `a3`) encode the same
 thing, but they exist to be read by a human — branching on a display string breaks silently
 the first time one is reworded.
+
+**Grid columns are not a one-to-one match for the variables in the input file.** A variable
+declared `urs` is split into two columns (`x2+` and `x2-`) and one declared `-` is stored as
+its own negation (`x2'`), because the simplex can only handle non-negative variables. Read
+`CanonicalMatrix.VariableMap` to get back from columns to variables, or better, call
+`RecoverOriginalValues(columnValues)` and let it do it:
+
+```csharp
+var columnValues = new double[model.ColumnCount];
+for (var r = 1; r < model.RowCount; r++)
+    columnValues[model.BasicVariables[r - 1]] = model.Grid[r, model.RhsColumn];
+
+var answer = model.RecoverOriginalValues(columnValues);   // indexed by variable, not column
+```
+
+Assuming column j is variable j gives a wrong answer with no error, and only on models that
+use `urs` or `-`.
 
 **A binary model has no `x <= 1` rows in its canonical form.** `bin` sets `IsBinaryMask`, and
 nothing else — the upper bound is never written into the grid. So the LP relaxation of

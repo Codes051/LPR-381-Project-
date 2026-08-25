@@ -27,6 +27,17 @@ public class Tableau
     /// <summary>Optional note printed under the table: pivot chosen, ratio test, fathom reason.</summary>
     public string Note { get; set; }
 
+    /// <summary>
+    /// Optional explicit name for each row, one per grid row.
+    /// </summary>
+    /// <remarks>
+    /// Leave this null for an ordinary tableau: the writer then names row 0 "z" and every
+    /// other row after its basic variable, which is what a tableau should show. Set it when
+    /// the grid is not a tableau at all - the revised simplex displays the basis inverse and
+    /// the price-out row, and neither has a row 0 that means "the objective".
+    /// </remarks>
+    public List<string> RowLabels { get; set; }
+
     /// <summary>Column pivoted on for this iteration, or -1 if not applicable.</summary>
     public int PivotColumn { get; set; } = -1;
 

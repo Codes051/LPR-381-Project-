@@ -162,7 +162,8 @@ the bounding rule.
 |---|---|
 | Parser, canonicalizer, output writer | **Done** — all samples parse, canonical grids hand-checked, malformed input reports readable errors |
 | Primal simplex (two-phase) | **Done** — verified against hand-worked answers, including infeasible and unbounded detection |
-| Revised primal simplex, cutting plane | Not started (Person A) |
+| Revised primal simplex | **Done** — product form and price out displayed each iteration; agrees with the tableau simplex and with brute force |
+| Cutting plane | Not started (Person A) |
 | Branch & bound simplex, branch & bound knapsack | Not started (Person B) |
 | Sensitivity analysis, duality, menus, non-linear bonus | Not started (Person C) |
 

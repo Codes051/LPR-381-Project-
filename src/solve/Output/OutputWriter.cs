@@ -79,11 +79,10 @@ public class OutputWriter
         WriteGrid(tableau.Grid, tableau.BasicVariables, tableau.ColumnLabels,
                   tableau.PivotRow, tableau.PivotColumn);
 
-        if (tableau.PivotRow >= 0 && tableau.PivotColumn >= 0)
-        {
-            WriteLine($"Pivot on column {LabelAt(tableau.ColumnLabels, tableau.PivotColumn)}, " +
-                      $"row {tableau.PivotRow} (marked * and > above).");
-        }
+        // A legend rather than a restatement: the note underneath already names the entering
+        // and leaving variables, so repeating them here just makes the output file longer.
+        if (tableau.PivotColumn >= 0)
+            WriteLine(tableau.PivotRow >= 0 ? "* entering column, > pivot row" : "* entering column");
 
         if (!string.IsNullOrWhiteSpace(tableau.Note))
             WriteLine(tableau.Note);

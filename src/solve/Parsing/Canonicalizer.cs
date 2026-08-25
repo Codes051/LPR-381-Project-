@@ -52,7 +52,8 @@ public class Canonicalizer
 
         return new CanonicalMatrix(grid, basicVariables, labels, isInteger, isBinary)
         {
-            OriginalObjectiveType = model.ObjectiveType
+            OriginalObjectiveType = model.ObjectiveType,
+            ColumnTypes = BuildColumnTypes(model, variableCount, totalColumns)
         };
     }
 
@@ -73,7 +74,7 @@ public class Canonicalizer
 
         foreach (var constraint in model.Constraints)
         {
-            switch (constraint.RelationalOperator)
+            switch (EffectiveRelation(constraint))
             {
                 case Relation.LEQ:
                     constraint.GeneratedVariables.Add(
@@ -95,6 +96,29 @@ public class Canonicalizer
         }
 
         return nextColumn;
+    }
+
+    /// <summary>
+    /// The relation to canonicalize against, which is the flip of what the user wrote when the
+    /// right-hand-side is negative.
+    /// </summary>
+    /// <remarks>
+    /// Multiplying a row through by -1 to make its right-hand-side non-negative reverses the
+    /// inequality, so <c>x1 + x2 &lt;= -5</c> is canonicalized as <c>-x1 - x2 &gt;= 5</c> and
+    /// therefore needs a surplus and an artificial rather than a slack. Equalities are
+    /// unaffected by the sign flip.
+    /// </remarks>
+    private static Relation EffectiveRelation(Constraint constraint)
+    {
+        if (constraint.RHS >= 0)
+            return constraint.RelationalOperator;
+
+        switch (constraint.RelationalOperator)
+        {
+            case Relation.LEQ: return Relation.GEQ;
+            case Relation.GEQ: return Relation.LEQ;
+            default: return Relation.EQ;
+        }
     }
 
     /// <summary>
@@ -126,13 +150,21 @@ public class Canonicalizer
             var constraint = model.Constraints[i];
             var row = i + 1;
 
-            for (var j = 0; j < constraint.Coefficients.Count; j++)
-                grid[row, j] = constraint.Coefficients[j];
+            // A negative right-hand-side is written out multiplied through by -1, which is why
+            // the relation was flipped when the added variables were assigned. Without this the
+            // row starts with a negative basic value, which is an infeasible starting point that
+            // the simplex has no artificial variable to repair - it would just return a wrong
+            // answer rather than reporting a problem.
+            var sign = constraint.RHS < 0 ? -1.0 : 1.0;
 
+            for (var j = 0; j < constraint.Coefficients.Count; j++)
+                grid[row, j] = sign * constraint.Coefficients[j];
+
+            // The added variables already carry the sign that matches the flipped relation.
             foreach (var added in constraint.GeneratedVariables)
                 grid[row, added.ColumnIndex] = added.Coefficient;
 
-            grid[row, rhsColumn] = constraint.RHS;
+            grid[row, rhsColumn] = sign * constraint.RHS;
             basicVariables[i] = ChooseBasicVariable(constraint, i);
         }
     }
@@ -207,5 +239,27 @@ public class Canonicalizer
             isInteger[j] = restriction == SignRestriction.Integer || restriction == SignRestriction.Binary;
             isBinary[j] = restriction == SignRestriction.Binary;
         }
+    }
+
+    /// <summary>
+    /// Records what each column actually is, so an algorithm never has to infer a variable
+    /// role from its display label.
+    /// </summary>
+    private static VariableType[] BuildColumnTypes(ParsedLP model, int variableCount, int totalColumns)
+    {
+        // Decision is the default, which is correct for the leading columns and harmless for
+        // the trailing right-hand-side column, whose entry is documented as unused.
+        var types = new VariableType[totalColumns + 1];
+
+        for (var j = 0; j < variableCount; j++)
+            types[j] = VariableType.Decision;
+
+        foreach (var constraint in model.Constraints)
+        {
+            foreach (var added in constraint.GeneratedVariables)
+                types[added.ColumnIndex] = added.Type;
+        }
+
+        return types;
     }
 }

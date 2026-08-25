@@ -38,6 +38,19 @@ public class CanonicalMatrix
     /// <summary>True only for columns restricted to 0/1. Added columns are false.</summary>
     public bool[] IsBinaryMask { get; }
 
+    /// <summary>
+    /// What role each column plays, indexed by grid column, same length as the other masks.
+    /// The entry for the right-hand-side column is meaningless and should not be read.
+    /// </summary>
+    /// <remarks>
+    /// Set by the canonicalizer. Algorithms need this: a two-phase simplex has to know which
+    /// columns are artificial so it can bar them from re-entering the basis in phase two, and
+    /// reporting a solution means knowing which columns are decision variables. The column
+    /// labels encode the same information in their prefix, but reading algorithm behaviour out
+    /// of a display string would break silently the first time a label is reworded.
+    /// </remarks>
+    public VariableType[] ColumnTypes { get; set; }
+
     /// <summary>Whether the source model was a Min, so callers know to flip the objective back.</summary>
     public ProblemType OriginalObjectiveType { get; set; } = ProblemType.Max;
 
@@ -54,6 +67,38 @@ public class CanonicalMatrix
     /// <summary>True if any column carries an integer or binary restriction.</summary>
     public bool IsIntegerProblem => IsIntegerMask.Any(f => f) || IsBinaryMask.Any(f => f);
 
+    /// <summary>How many columns are original decision variables, i.e. x1..xn.</summary>
+    /// <remarks>
+    /// Decision variables always occupy the leading columns, so this doubles as the exclusive
+    /// upper bound of their column range. The right-hand-side column is deliberately excluded
+    /// from the count: <see cref="VariableType.Decision"/> is the zero value of the enum, so
+    /// the unset entry for that column would otherwise be counted as a decision variable.
+    /// </remarks>
+    public int DecisionVariableCount
+    {
+        get
+        {
+            if (ColumnTypes == null)
+                return 0;
+
+            var count = 0;
+            for (var j = 0; j < RhsColumn && j < ColumnTypes.Length; j++)
+            {
+                if (ColumnTypes[j] == VariableType.Decision)
+                    count++;
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>True if the given grid column holds an artificial variable.</summary>
+    public bool IsArtificial(int column) =>
+        ColumnTypes != null
+        && column >= 0
+        && column < ColumnTypes.Length
+        && ColumnTypes[column] == VariableType.Artificial;
+
     /// <summary>
     /// Deep copy. Branch and bound and cutting plane both need to mutate a model without
     /// disturbing the parent node, so both rely on this.
@@ -68,7 +113,8 @@ public class CanonicalMatrix
 
         return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
         {
-            OriginalObjectiveType = OriginalObjectiveType
+            OriginalObjectiveType = OriginalObjectiveType,
+            ColumnTypes = ColumnTypes == null ? null : (VariableType[])ColumnTypes.Clone()
         };
     }
 }

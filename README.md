@@ -106,8 +106,8 @@ The last two are there for the Error Handling marks — demo both on video.
 
 ## Contract details that are easy to get wrong
 
-Three things about the shared types that aren't obvious from their signatures. Each one
-fails silently rather than loudly, so read them before writing a solver.
+Five things about the shared types that aren't obvious from their signatures. Each one fails
+silently rather than loudly, so read them before writing a solver.
 
 **Your first recorded tableau must be the canonical form.** `OutputWriter.WriteResult`
 prints `SolveResult.Iterations` in order and nothing else — that list is the only thing
@@ -139,12 +139,26 @@ renders `4.000` as `4,000`. In a tableau that reads as four thousand, and it con
 input file format, which uses a point. `Format()` pins invariant culture and does the
 three-decimal rounding the brief requires, in one place.
 
+**Ask `ColumnTypes`, never the column label.** `CanonicalMatrix.ColumnTypes[j]` says whether
+a column is a decision, slack, surplus or artificial variable, with `IsArtificial(j)` and
+`DecisionVariableCount` as shortcuts. The labels (`x1`, `s1`, `e2`, `a3`) encode the same
+thing, but they exist to be read by a human — branching on a display string breaks silently
+the first time one is reworded.
+
+**A binary model has no `x <= 1` rows in its canonical form.** `bin` sets `IsBinaryMask`, and
+nothing else — the upper bound is never written into the grid. So the LP relaxation of
+`knapsack_ip.txt` is *not* the knapsack relaxation you want: it puts `x3 = 6.667` and reports
+`z = 20`, because nothing stops a variable exceeding 1. Person B: whichever branch-and-bound
+you point at a binary model has to supply those bounds itself, either as explicit rows or in
+the bounding rule.
+
 ## Status
 
 | Component | State |
 |---|---|
 | Parser, canonicalizer, output writer | **Done** — all samples parse, canonical grids hand-checked, malformed input reports readable errors |
-| Primal simplex, revised primal simplex, cutting plane | Not started (Person A) |
+| Primal simplex (two-phase) | **Done** — verified against hand-worked answers, including infeasible and unbounded detection |
+| Revised primal simplex, cutting plane | Not started (Person A) |
 | Branch & bound simplex, branch & bound knapsack | Not started (Person B) |
 | Sensitivity analysis, duality, menus, non-linear bonus | Not started (Person C) |
 

@@ -104,7 +104,68 @@ The last two are there for the Error Handling marks — demo both on video.
 5. **Never let an exception reach the user.** Throw `LpException` with a readable message;
    the menu catches it. Crashes cost the Error Handling marks.
 
+## Contract details that are easy to get wrong
+
+Three things about the shared types that aren't obvious from their signatures. Each one
+fails silently rather than loudly, so read them before writing a solver.
+
+**Your first recorded tableau must be the canonical form.** `OutputWriter.WriteResult`
+prints `SolveResult.Iterations` in order and nothing else — that list is the only thing
+that puts the canonical form in the output file. Every algorithm criterion in the brief
+starts with "display the canonical form", so a solver that starts recording at its first
+pivot silently loses those marks:
+
+```csharp
+var result = new SolveResult(Name);
+result.Iterations.Add(Tableau.Snapshot("Canonical Form", model));   // <- before the loop
+```
+
+**Indexing is not uniform across `CanonicalMatrix`.** `ColumnLabels`, `IsIntegerMask` and
+`IsBinaryMask` are all indexed by *grid column* and all have length `ColumnCount`, so index
+`j` means the same thing in all three. `BasicVariables` is the exception — it has one entry
+per *constraint*, so `BasicVariables[i]` is the basic column of grid row `i + 1`:
+
+```csharp
+for (var row = 1; row < model.RowCount; row++)
+{
+    var basicColumn = model.BasicVariables[row - 1];      // note the -1
+    var name = model.ColumnLabels[basicColumn];
+}
+```
+
+**Never call `ToString()` on a double — always `OutputWriter.Format(value)`.** Our machines
+are set to a locale that uses a comma as the decimal separator, so a raw `ToString("0.000")`
+renders `4.000` as `4,000`. In a tableau that reads as four thousand, and it contradicts the
+input file format, which uses a point. `Format()` pins invariant culture and does the
+three-decimal rounding the brief requires, in one place.
+
 ## Status
 
-Scaffolding only — every algorithm currently throws `NotImplementedException`. The menu
-runs, so you can navigate the whole application and see exactly where your piece plugs in.
+| Component | State |
+|---|---|
+| Parser, canonicalizer, output writer | **Done** — all samples parse, canonical grids hand-checked, malformed input reports readable errors |
+| Primal simplex, revised primal simplex, cutting plane | Not started (Person A) |
+| Branch & bound simplex, branch & bound knapsack | Not started (Person B) |
+| Sensitivity analysis, duality, menus, non-linear bonus | Not started (Person C) |
+
+The menu runs. Unimplemented algorithms report `Not built yet` instead of crashing, so you
+can navigate the whole application and see exactly where your piece plugs in.
+
+### Building without the .NET SDK
+
+If you have the SDK, use `dotnet build` and ignore this. If you only have Visual Studio
+**Build Tools**, `dotnet` does not exist on your machine at all — but the project still
+compiles and runs, because we use no SDK-only APIs. `tools/build-check.ps1` drives the
+Roslyn compiler directly against the .NET Framework reference assemblies:
+
+```bash
+powershell -NoProfile -File tools/build-check.ps1
+```
+
+It also accepts piped menu keystrokes, which is the quickest way to exercise a solver
+without clicking through the menu every time — here, load the knapsack and solve it with
+menu option 5:
+
+```bash
+powershell -NoProfile -File tools/build-check.ps1 -Run -StdIn "1|samples/knapsack_ip.txt|2|5|0"
+```

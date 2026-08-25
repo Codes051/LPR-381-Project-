@@ -1,3 +1,4 @@
+using System.Globalization;
 using Solve.Exceptions;
 using Solve.Models;
 
@@ -5,7 +6,7 @@ namespace Solve.Parsing;
 
 // ============================================================================
 //  OWNER: Person A
-//  Marks: Input File (3)
+//  Marks: Input File (3), and a share of Error Handling (5)
 //  Design reference: LP_Parser.pdf, section 3
 // ============================================================================
 
@@ -16,8 +17,20 @@ namespace Solve.Parsing;
 /// </summary>
 public class LpParser
 {
+    /// <summary>
+    /// Parsing is culture invariant on purpose. On a machine configured for a comma
+    /// decimal separator a plain double.Parse would reject "2.5", which would make the
+    /// program work for some of us and fail for others on the same input file.
+    /// </summary>
+    private const NumberStyles CoefficientStyles = NumberStyles.Float;
+
+    private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
+
     public ParsedLP ParseFile(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new LpException("No input file was given.");
+
         if (!File.Exists(path))
             throw new LpException($"Input file not found: {path}");
 
@@ -26,28 +39,173 @@ public class LpParser
 
     public ParsedLP Parse(string[] lines)
     {
-        // TODO (A): Objective function - first line.
-        //   word[0] is "max" or "min", anything else is an error.
-        //   Remaining words are signed coefficients (+2, -3, ...). A standard signed
-        //   parse handles the +/- automatically; a failed parse is an error.
-        //   The number of coefficients is numDecisionVars, and drives the rest of the parse.
-        //
-        // TODO (A): Constraints - one per line, until the restrictions line.
-        //   Read each line in reverse: last word is the RHS, second-to-last is the relation
-        //   (<=, >=, =, else error). What remains must be exactly numDecisionVars
-        //   coefficients, read left to right. Zero is a valid coefficient. A wrong count
-        //   is an error.
-        //   Note: the brief prints the example as "+10 +10 <=40" with no space before the
-        //   RHS, but that is a typo - the relation and the RHS are always separate words.
-        //
-        // TODO (A): Restrictions - the final line, identified by peeking ahead.
-        //   If there are no lines left after the current one, it is the restrictions line
-        //   and not a constraint. One word per decision variable, in objective function
-        //   order. Accept +, -, urs, int, bin; anything else is an error.
-        //
-        // TODO (A): Every failure path above must throw ParseException with the line number.
-        //   Malformed input is explicitly part of the Error Handling marks.
+        if (lines == null)
+            throw new LpException("The input file was empty.");
 
-        throw new NotImplementedException("LpParser.Parse - Person A");
+        // Blank lines are ignored, but the original line numbers travel with each line so
+        // an error points at the line the user actually sees in their editor.
+        var content = new List<KeyValuePair<int, string>>();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(lines[i]))
+                content.Add(new KeyValuePair<int, string>(i + 1, lines[i].Trim()));
+        }
+
+        if (content.Count < 3)
+        {
+            throw new LpException(
+                "The input file needs at least three lines: the objective function, " +
+                "at least one constraint, and the sign restrictions.");
+        }
+
+        var objectiveLine = content[0];
+        ProblemType objectiveType;
+        var objectiveCoefficients = ParseObjective(objectiveLine, out objectiveType);
+        var variableCount = objectiveCoefficients.Count;
+
+        // The last line is always the restrictions, so everything between the objective and
+        // it is a constraint. This is the peek-ahead rule from the design document, applied
+        // to the collected lines rather than to a StreamReader.
+        var constraints = new List<Constraint>();
+        for (var i = 1; i < content.Count - 1; i++)
+            constraints.Add(ParseConstraint(content[i], variableCount));
+
+        var restrictions = ParseRestrictions(content[content.Count - 1], variableCount);
+
+        return new ParsedLP(objectiveType, objectiveCoefficients, constraints, restrictions);
+    }
+
+    private static List<double> ParseObjective(KeyValuePair<int, string> line, out ProblemType type)
+    {
+        var lineNumber = line.Key;
+        var words = Split(line.Value);
+
+        switch (words[0].ToLowerInvariant())
+        {
+            case "max": type = ProblemType.Max; break;
+            case "min": type = ProblemType.Min; break;
+            default:
+                throw new ParseException(lineNumber,
+                    $"the objective must start with max or min, found \"{words[0]}\".");
+        }
+
+        if (words.Length < 2)
+            throw new ParseException(lineNumber, "the objective function has no coefficients.");
+
+        var coefficients = new List<double>();
+        for (var i = 1; i < words.Length; i++)
+            coefficients.Add(ParseNumber(words[i], lineNumber, "objective function coefficient"));
+
+        return coefficients;
+    }
+
+    private static Constraint ParseConstraint(KeyValuePair<int, string> line, int variableCount)
+    {
+        var lineNumber = line.Key;
+        var words = Split(line.Value);
+
+        // Read in reverse: the right-hand-side and the relation are always the last two
+        // words, so whatever remains has to be one coefficient per decision variable.
+        if (words.Length < variableCount + 2)
+        {
+            throw new ParseException(lineNumber,
+                $"expected {variableCount} coefficients followed by a relation and a " +
+                $"right-hand-side, found only {words.Length} values." + GluedRelationHint(words));
+        }
+
+        var rhs = ParseNumber(words[words.Length - 1], lineNumber, "right-hand-side");
+        var relation = ParseRelation(words[words.Length - 2], lineNumber);
+
+        var coefficientCount = words.Length - 2;
+        if (coefficientCount != variableCount)
+        {
+            throw new ParseException(lineNumber,
+                $"expected {variableCount} technological coefficients to match the objective " +
+                $"function, found {coefficientCount}.");
+        }
+
+        var coefficients = new List<double>();
+        for (var i = 0; i < coefficientCount; i++)
+            coefficients.Add(ParseNumber(words[i], lineNumber, "technological coefficient"));
+
+        return new Constraint(coefficients, relation, rhs);
+    }
+
+    private static List<SignRestriction> ParseRestrictions(KeyValuePair<int, string> line, int variableCount)
+    {
+        var lineNumber = line.Key;
+        var words = Split(line.Value);
+
+        if (words.Length != variableCount)
+        {
+            throw new ParseException(lineNumber,
+                $"expected {variableCount} sign restrictions, one per decision variable, found " +
+                $"{words.Length}. If this line was meant to be a constraint it is missing its " +
+                "relation and right-hand-side.");
+        }
+
+        var restrictions = new List<SignRestriction>();
+        foreach (var word in words)
+        {
+            switch (word.ToLowerInvariant())
+            {
+                case "+": restrictions.Add(SignRestriction.Positive); break;
+                case "-": restrictions.Add(SignRestriction.Negative); break;
+                case "urs": restrictions.Add(SignRestriction.Unrestricted); break;
+                case "int": restrictions.Add(SignRestriction.Integer); break;
+                case "bin": restrictions.Add(SignRestriction.Binary); break;
+                default:
+                    throw new ParseException(lineNumber,
+                        $"\"{word}\" is not a valid sign restriction. Use +, -, urs, int or bin.");
+            }
+        }
+
+        return restrictions;
+    }
+
+    private static Relation ParseRelation(string word, int lineNumber)
+    {
+        switch (word)
+        {
+            case "<=": return Relation.LEQ;
+            case ">=": return Relation.GEQ;
+            case "=": return Relation.EQ;
+            default:
+                throw new ParseException(lineNumber,
+                    $"\"{word}\" is not a valid relation. Use <=, >= or =.");
+        }
+    }
+
+    private static double ParseNumber(string word, int lineNumber, string what)
+    {
+        // A leading + or - is handled by NumberStyles.Float, so the sign operator and the
+        // magnitude never need to be pulled apart.
+        double value;
+        if (!double.TryParse(word, CoefficientStyles, Invariant, out value))
+            throw new ParseException(lineNumber, $"\"{word}\" is not a valid {what}.");
+
+        return value;
+    }
+
+    private static string[] Split(string line) =>
+        line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// The project brief prints its example with the relation stuck to the right-hand-side
+    /// ("&lt;=40"). That is a typo in the brief, but it is the first thing anyone retyping
+    /// the example gets wrong, so name it instead of reporting a bare count mismatch.
+    /// </summary>
+    private static string GluedRelationHint(string[] words)
+    {
+        foreach (var word in words)
+        {
+            if ((word.StartsWith("<=") || word.StartsWith(">=")) && word.Length > 2)
+            {
+                return $" Did you mean to put a space in \"{word}\"? The relation and the " +
+                       "right-hand-side must be separate words.";
+            }
+        }
+
+        return string.Empty;
     }
 }

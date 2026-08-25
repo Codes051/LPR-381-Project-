@@ -66,7 +66,7 @@ public class OutputWriter
         if (model.OriginalObjectiveType == ProblemType.Min)
             WriteLine("Original problem was a minimisation, normalised to a maximisation below.");
 
-        WriteGrid(model.Grid, model.BasicVariables, model.ColumnLabels, -1, -1);
+        WriteGrid(model.Grid, model.BasicVariables, model.ColumnLabels, null, -1, -1);
     }
 
     /// <summary>Prints one captured iteration, including its note and pivot markers.</summary>
@@ -76,17 +76,16 @@ public class OutputWriter
             return;
 
         WriteHeading(tableau.Title);
-        WriteGrid(tableau.Grid, tableau.BasicVariables, tableau.ColumnLabels,
+        WriteGrid(tableau.Grid, tableau.BasicVariables, tableau.ColumnLabels, tableau.RowLabels,
                   tableau.PivotRow, tableau.PivotColumn);
 
-        if (tableau.PivotRow >= 0 && tableau.PivotColumn >= 0)
-        {
-            WriteLine($"Pivot on column {LabelAt(tableau.ColumnLabels, tableau.PivotColumn)}, " +
-                      $"row {tableau.PivotRow} (marked * and > above).");
-        }
+        // A legend rather than a restatement: the note underneath already names the entering
+        // and leaving variables, so repeating them here just makes the output file longer.
+        if (tableau.PivotColumn >= 0)
+            WriteLine(tableau.PivotRow >= 0 ? "* entering column, > pivot row" : "* entering column");
 
         if (!string.IsNullOrWhiteSpace(tableau.Note))
-            WriteLine(tableau.Note);
+            WriteWrapped(tableau.Note);
     }
 
     /// <summary>Prints a full solve: canonical form, every iteration, then the answer.</summary>
@@ -112,7 +111,7 @@ public class OutputWriter
 
             default:
                 // Infeasible and unbounded have no solution to print, only an explanation.
-                WriteLine(string.IsNullOrWhiteSpace(result.Message)
+                WriteWrapped(string.IsNullOrWhiteSpace(result.Message)
                     ? "The model has no optimal solution."
                     : result.Message);
                 break;
@@ -121,7 +120,36 @@ public class OutputWriter
         if (!string.IsNullOrWhiteSpace(result.BestCandidateDescription))
         {
             WriteHeading("Best Candidate");
-            WriteLine(result.BestCandidateDescription);
+            WriteWrapped(result.BestCandidateDescription);
+        }
+    }
+
+    /// <summary>
+    /// Writes prose broken at word boundaries, so a long explanation does not run off the side
+    /// of the output file next to tables that are already close to the same width.
+    /// </summary>
+    private void WriteWrapped(string text, int width = 90)
+    {
+        foreach (var paragraph in text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = new StringBuilder();
+
+            foreach (var word in paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.Length > 0 && line.Length + 1 + word.Length > width)
+                {
+                    WriteLine(line.ToString());
+                    line.Clear();
+                }
+
+                if (line.Length > 0)
+                    line.Append(' ');
+
+                line.Append(word);
+            }
+
+            if (line.Length > 0)
+                WriteLine(line.ToString());
         }
     }
 
@@ -134,10 +162,31 @@ public class OutputWriter
         if (result.VariableValues == null || result.VariableValues.Length == 0)
             return;
 
-        var labels = result.FinalTableau != null ? result.FinalTableau.ColumnLabels : null;
+        // VariableValues holds the variables as the user declared them, which is NOT the same
+        // as the leading columns once a urs or - restriction has been substituted away. Naming
+        // these from ColumnLabels would print a recovered value under a stand-in column name.
+        var map = result.FinalTableau != null ? result.FinalTableau.VariableMap : null;
+        var substituted = new List<string>();
 
         for (var j = 0; j < result.VariableValues.Length; j++)
-            WriteLine($"  {LabelAt(labels, j, "x" + (j + 1))} = {Format(result.VariableValues[j])}");
+        {
+            var name = map != null && j < map.Length ? map[j].Name : "x" + (j + 1);
+            WriteLine($"  {name} = {Format(result.VariableValues[j])}");
+
+            if (map != null && j < map.Length && !map[j].IsDirect)
+            {
+                substituted.Add(map[j].NegativeColumn >= 0
+                    ? $"{map[j].Name} was declared urs and appears in the tableau split as " +
+                      $"{map[j].Name}+ minus {map[j].Name}-"
+                    : $"{map[j].Name} was declared non-positive and appears in the tableau as " +
+                      $"{map[j].Name}', which holds its negation");
+            }
+        }
+
+        // Without this the tableau columns and the reported answer look inconsistent to anyone
+        // reading the output file, which is exactly what a marker will be doing.
+        foreach (var note in substituted)
+            WriteWrapped("  Note: " + note + ".");
     }
 
     /// <summary>
@@ -145,7 +194,9 @@ public class OutputWriter
     /// column widths measured afterwards, so decorated labels (the pivot markers) can never
     /// push a column out of alignment.
     /// </summary>
-    private void WriteGrid(double[,] grid, int[] basicVariables, List<string> labels, int pivotRow, int pivotColumn)
+    private void WriteGrid(
+        double[,] grid, int[] basicVariables, List<string> labels, List<string> rowLabels,
+        int pivotRow, int pivotColumn)
     {
         if (grid == null)
         {
@@ -164,7 +215,7 @@ public class OutputWriter
 
         for (var i = 0; i < rows; i++)
         {
-            cells[i + 1, 0] = (i == pivotRow ? ">" : " ") + RowLabel(i, basicVariables, labels);
+            cells[i + 1, 0] = (i == pivotRow ? ">" : " ") + RowLabel(i, basicVariables, labels, rowLabels);
 
             for (var j = 0; j < columns; j++)
                 cells[i + 1, j + 1] = Format(grid[i, j]);
@@ -197,8 +248,12 @@ public class OutputWriter
     }
 
     /// <summary>Row 0 is always the objective; every other row is named for its basic variable.</summary>
-    private static string RowLabel(int row, int[] basicVariables, List<string> labels)
+    private static string RowLabel(int row, int[] basicVariables, List<string> labels, List<string> rowLabels)
     {
+        // An explicit name always wins: a basis inverse has no row that means "the objective".
+        if (rowLabels != null && row < rowLabels.Count)
+            return rowLabels[row];
+
         if (row == 0)
             return "z";
 

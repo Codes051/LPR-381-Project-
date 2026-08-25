@@ -156,6 +156,13 @@ nothing else — the upper bound is never written into the grid. So the LP relax
 you point at a binary model has to supply those bounds itself, either as explicit rows or in
 the bounding rule.
 
+The cutting plane solves this by calling `CanonicalMatrix.WithExtraConstraint(...)` once per
+binary column before its first solve. That method is general — it appends a row and
+whatever slack, surplus or artificial columns the relation needs, returning a new model
+and leaving the original alone. Person C: that is exactly what the "add a new constraint
+to an optimal solution" sensitivity operation needs, so use it rather than writing a
+second one.
+
 ## Status
 
 | Component | State |
@@ -163,7 +170,7 @@ the bounding rule.
 | Parser, canonicalizer, output writer | **Done** — all samples parse, canonical grids hand-checked, malformed input reports readable errors |
 | Primal simplex (two-phase) | **Done** — verified against hand-worked answers, including infeasible and unbounded detection |
 | Revised primal simplex | **Done** — product form and price out displayed each iteration; agrees with the tableau simplex and with brute force |
-| Cutting plane | Not started (Person A) |
+| Cutting plane (revised, Gomory) | **Done** — agrees with exhaustive integer search on both integer samples; adds the missing binary bounds itself |
 | Branch & bound simplex, branch & bound knapsack | Not started (Person B) |
 | Sensitivity analysis, duality, menus, non-linear bonus | Not started (Person C) |
 

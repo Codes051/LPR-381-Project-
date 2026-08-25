@@ -111,7 +111,7 @@ public class OutputWriter
 
             default:
                 // Infeasible and unbounded have no solution to print, only an explanation.
-                WriteLine(string.IsNullOrWhiteSpace(result.Message)
+                WriteWrapped(string.IsNullOrWhiteSpace(result.Message)
                     ? "The model has no optimal solution."
                     : result.Message);
                 break;
@@ -120,7 +120,7 @@ public class OutputWriter
         if (!string.IsNullOrWhiteSpace(result.BestCandidateDescription))
         {
             WriteHeading("Best Candidate");
-            WriteLine(result.BestCandidateDescription);
+            WriteWrapped(result.BestCandidateDescription);
         }
     }
 

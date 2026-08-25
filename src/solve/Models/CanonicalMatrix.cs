@@ -100,6 +100,126 @@ public class CanonicalMatrix
         && ColumnTypes[column] == VariableType.Artificial;
 
     /// <summary>
+    /// Returns a new model with one more constraint, adding whatever slack, surplus or
+    /// artificial columns that relation needs. The original is left untouched.
+    /// </summary>
+    /// <param name="coefficients">
+    /// One entry per existing variable column, i.e. <see cref="RhsColumn"/> of them. Anything
+    /// shorter is padded with zeros.
+    /// </param>
+    /// <remarks>
+    /// Written for the cutting plane, which bolts a Gomory cut onto the model and re-solves,
+    /// but it is deliberately general: Person C needs exactly this for the "add a new
+    /// constraint to an optimal solution" sensitivity operation.
+    /// A negative right-hand side is multiplied through by -1 and the relation flipped, for
+    /// the same reason the canonicalizer does it - a row that starts basic at a negative value
+    /// is infeasible with nothing to repair it.
+    /// </remarks>
+    public CanonicalMatrix WithExtraConstraint(double[] coefficients, Relation relation, double rhs)
+    {
+        if (coefficients == null)
+            throw new ArgumentNullException(nameof(coefficients));
+
+        var variableColumns = RhsColumn;
+        var sign = rhs < 0 ? -1.0 : 1.0;
+        var effective = relation;
+
+        if (rhs < 0)
+        {
+            if (relation == Relation.LEQ) effective = Relation.GEQ;
+            else if (relation == Relation.GEQ) effective = Relation.LEQ;
+        }
+
+        // Work out the extra columns this relation needs before anything is sized.
+        var addedTypes = new List<VariableType>();
+        var addedValues = new List<double>();
+
+        switch (effective)
+        {
+            case Relation.LEQ:
+                addedTypes.Add(VariableType.Slack);
+                addedValues.Add(1.0);
+                break;
+            case Relation.GEQ:
+                addedTypes.Add(VariableType.Surplus);
+                addedValues.Add(-1.0);
+                addedTypes.Add(VariableType.Artificial);
+                addedValues.Add(1.0);
+                break;
+            default:
+                addedTypes.Add(VariableType.Artificial);
+                addedValues.Add(1.0);
+                break;
+        }
+
+        var newVariableColumns = variableColumns + addedTypes.Count;
+        var newRows = RowCount + 1;
+        var grid = new double[newRows, newVariableColumns + 1];
+
+        // The right-hand side moves right by however many columns were inserted, so the old
+        // grid cannot simply be block-copied.
+        for (var i = 0; i < RowCount; i++)
+        {
+            for (var j = 0; j < variableColumns; j++)
+                grid[i, j] = Grid[i, j];
+
+            grid[i, newVariableColumns] = Grid[i, RhsColumn];
+        }
+
+        var newRow = RowCount;
+        for (var j = 0; j < variableColumns && j < coefficients.Length; j++)
+            grid[newRow, j] = sign * coefficients[j];
+
+        for (var k = 0; k < addedTypes.Count; k++)
+            grid[newRow, variableColumns + k] = addedValues[k];
+
+        grid[newRow, newVariableColumns] = sign * rhs;
+
+        var labels = new List<string>();
+        for (var j = 0; j < variableColumns; j++)
+            labels.Add(ColumnLabels[j]);
+
+        var constraintNumber = ConstraintCount + 1;
+        foreach (var type in addedTypes)
+        {
+            var prefix = type == VariableType.Slack ? "s" : type == VariableType.Surplus ? "e" : "a";
+            labels.Add(prefix + constraintNumber);
+        }
+
+        labels.Add("rhs");
+
+        var basics = new int[ConstraintCount + 1];
+        Array.Copy(BasicVariables, basics, ConstraintCount);
+
+        // Never the surplus: it carries -1.0 and cannot seed an identity basis.
+        for (var k = 0; k < addedTypes.Count; k++)
+        {
+            if (addedTypes[k] != VariableType.Surplus)
+                basics[ConstraintCount] = variableColumns + k;
+        }
+
+        var intMask = new bool[newVariableColumns + 1];
+        var binMask = new bool[newVariableColumns + 1];
+        var types = new VariableType[newVariableColumns + 1];
+
+        for (var j = 0; j < variableColumns; j++)
+        {
+            intMask[j] = IsIntegerMask[j];
+            binMask[j] = IsBinaryMask[j];
+            types[j] = ColumnTypes == null ? VariableType.Decision : ColumnTypes[j];
+        }
+
+        for (var k = 0; k < addedTypes.Count; k++)
+            types[variableColumns + k] = addedTypes[k];
+
+        return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
+        {
+            OriginalObjectiveType = OriginalObjectiveType,
+            ColumnTypes = types
+        };
+    }
+
+    /// <summary>
     /// Deep copy. Branch and bound and cutting plane both need to mutate a model without
     /// disturbing the parent node, so both rely on this.
     /// </summary>

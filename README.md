@@ -84,10 +84,14 @@ samples/                      test models, copied next to the exe
 | `lp_max.txt` | Plain max LP, all `<=`, exercises slack variables |
 | `lp_min_mixed.txt` | Min problem with `=`, `>=` and `<=` — surplus and artificial variables |
 | `ip_integer.txt` | Integer (not binary) model for branch & bound and cutting plane |
+| `lp_max_4var.txt` | 4 variables, 4 constraints — a wider model for the "random amount of variables" criterion (z = 113.846) |
+| `lp_min_5con.txt` | 4 variables, 5 constraints, all three relations, Min objective — the heaviest two-phase case (z = 22) |
 | `unbounded.txt` | Must be reported as unbounded, not crash |
 | `infeasible.txt` | Must be reported as infeasible, not crash |
 
-The last two are there for the Error Handling marks — demo both on video.
+The last two are there for the Error Handling marks — demo both on video. The optimal
+values quoted above were cross-checked against brute-force enumeration of every basic
+feasible solution, so they are safe to assert against in a test.
 
 ## Ground rules for the group
 

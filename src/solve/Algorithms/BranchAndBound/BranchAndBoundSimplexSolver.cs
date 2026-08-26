@@ -34,7 +34,9 @@ public class BranchAndBoundSimplexSolver : ISolver
                 ? double.NegativeInfinity
                 : double.PositiveInfinity;
 
-        var root = new BranchAndBoundNode("1", model.Clone())
+        var rootModel = AddBinaryUpperBounds(model, result);
+
+        var root = new BranchAndBoundNode("1", rootModel)
         {
             BranchDescription = "Root LP relaxation"
         };
@@ -280,6 +282,53 @@ public class BranchAndBoundSimplexSolver : ISolver
             node,
             right,
             overallResult);
+    }
+
+    // A bin restriction only sets IsBinaryMask - no x <= 1 row is ever written into the
+    // canonical form - so branching on integrality alone will happily settle a binary
+    // variable on any whole number. On the knapsack that returned x3 = 5 and an objective
+    // of 19 instead of 15. The upper bounds have to be supplied here, before the root
+    // relaxation is solved.
+    private static CanonicalMatrix AddBinaryUpperBounds(
+        CanonicalMatrix model,
+        SolveResult result)
+    {
+        var working = model.Clone();
+        var bounded = new List<string>();
+
+        for (var column = 0; column < model.RhsColumn; column++)
+        {
+            if (!model.IsBinaryMask[column])
+                continue;
+
+            var coefficients = new double[working.RhsColumn];
+            coefficients[column] = 1.0;
+
+            working = working.WithExtraConstraint(
+                coefficients,
+                Relation.LEQ,
+                1.0);
+
+            bounded.Add(model.ColumnLabels[column]);
+        }
+
+        if (bounded.Count > 0)
+        {
+            result.Iterations.Add(
+                new Tableau(
+                    "Canonical Form With Binary Bounds",
+                    (double[,])working.Grid.Clone(),
+                    (int[])working.BasicVariables.Clone(),
+                    new List<string>(working.ColumnLabels))
+                {
+                    Note =
+                        "A bin restriction is only a flag, so an explicit x <= 1 row was added " +
+                        "for " + string.Join(", ", bounded.ToArray()) + " before branching. " +
+                        "Without these the search can return a whole number outside 0 and 1."
+                });
+        }
+
+        return working;
     }
 
     // Add x <= value or x >= value to a child problem

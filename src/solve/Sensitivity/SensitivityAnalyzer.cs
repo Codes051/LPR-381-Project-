@@ -1,5 +1,7 @@
+using Solve.Algorithms.Simplex;
 using Solve.Models;
 using Solve.Exceptions;
+using Solve.Parsing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,8 +38,24 @@ public class SensitivityAnalyzer
     private readonly int _numConstraints;
     private readonly int _numColumns;
 
-    public SensitivityAnalyzer(SolveResult result)
+    /// <summary>
+    /// The model as the user wrote it, when the caller supplied it.
+    /// </summary>
+    /// <remarks>
+    /// Every "apply and display a change" operation rebuilds this model with the change made
+    /// and solves it again. Editing the optimal tableau in place is not enough: changing a
+    /// right-hand side or adding a constraint can make the current basis infeasible or
+    /// non-optimal, so the answer has to be re-derived rather than patched.
+    /// </remarks>
+    private readonly ParsedLP _model;
+
+    public SensitivityAnalyzer(SolveResult result) : this(result, null)
     {
+    }
+
+    public SensitivityAnalyzer(SolveResult result, ParsedLP model)
+    {
+        _model = model;
         if (result == null)
             throw new LpException("SolveResult is null. Cannot perform sensitivity analysis.");
 
@@ -52,6 +70,101 @@ public class SensitivityAnalyzer
         _numConstraints = _optimal.ConstraintCount;
         _numColumns = _optimal.ColumnCount - 1; // Exclude RHS column
     }
+
+    // ----------------------------------------------------------------------
+    //  Re-solving support
+    //
+    //  An "apply a change" operation cannot be done by editing the optimal
+    //  tableau in place. Changing a right-hand side moves the basic values and
+    //  can make the basis infeasible; changing an objective coefficient can make
+    //  it non-optimal; adding a row or a column changes the shape of the problem
+    //  altogether. Each of these rebuilds the model with the change applied and
+    //  solves it again, which is correct by construction and also produces a full
+    //  set of tableau iterations for the output file.
+    // ----------------------------------------------------------------------
+
+    private ParsedLP RequireModel(string operation)
+    {
+        if (_model == null)
+        {
+            throw new LpException(
+                $"{operation} needs the original model. Construct the analyzer with " +
+                "new SensitivityAnalyzer(result, parsedModel) so the change can be applied " +
+                "and re-solved.");
+        }
+
+        return _model;
+    }
+
+    /// <summary>
+    /// Deep copy of the model, with fresh constraint objects.
+    /// </summary>
+    /// <remarks>
+    /// The copies must be new <see cref="Constraint"/> instances: canonicalization appends to
+    /// each constraint's GeneratedVariables list, so reusing the originals would add a second
+    /// set of slack and artificial columns the next time the model is canonicalized.
+    /// </remarks>
+    private ParsedLP CloneModel()
+    {
+        var source = RequireModel("This operation");
+        var constraints = new List<Constraint>();
+
+        foreach (var constraint in source.Constraints)
+        {
+            constraints.Add(new Constraint(
+                new List<double>(constraint.Coefficients),
+                constraint.RelationalOperator,
+                constraint.RHS));
+        }
+
+        return new ParsedLP(
+            source.ObjectiveType,
+            new List<double>(source.ObjectiveCoefficients),
+            constraints,
+            new List<SignRestriction>(source.Restrictions));
+    }
+
+    private static SolveResult ReSolve(ParsedLP modified, string description)
+    {
+        var canonical = new Canonicalizer().ToCanonicalForm(modified);
+        var result = new PrimalSimplexSolver().Solve(canonical);
+
+        result.Message = string.IsNullOrWhiteSpace(result.Message)
+            ? description
+            : description + " " + result.Message;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Maps a grid column back to the variable it represents in the model as written.
+    /// </summary>
+    /// <remarks>
+    /// Not the identity: a variable declared urs occupies two columns and one declared - is
+    /// stored as its own negation, so VariableMap is the only reliable way back.
+    /// </remarks>
+    private int VariableIndexForColumn(int column)
+    {
+        var map = _optimal.VariableMap;
+
+        if (map == null)
+            return column;
+
+        for (var i = 0; i < map.Length; i++)
+        {
+            if (map[i].PositiveColumn == column || map[i].NegativeColumn == column)
+                return i;
+        }
+
+        throw new LpException(
+            $"Column {ColumnName(column)} is not one of the decision variables, so it has no " +
+            "objective coefficient to change.");
+    }
+
+    private string ColumnName(int column) =>
+        column >= 0 && column < _optimal.ColumnLabels.Count
+            ? _optimal.ColumnLabels[column]
+            : "column " + column;
 
     /// <summary>
     /// Checks if a column is basic (has a 1 in its column with zeros elsewhere)
@@ -167,45 +280,13 @@ public class SensitivityAnalyzer
     {
         ValidateColumn(column);
 
-        if (newValue < 0)
-            throw new LpException("Non-basic variable value must be non-negative.");
+        if (FindBasicRow(column) != -1)
+            throw new LpException($"{ColumnName(column)} is basic. Use ChangeBasicVariable instead.");
 
-        int basicRow = FindBasicRow(column);
-        if (basicRow != -1)
-            throw new LpException($"Column {column} is a basic variable. Use ChangeBasicVariable instead.");
-
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
-        int rhsCol = clone.RhsColumn;
-
-        // Update the objective value
-        double reducedCost = grid[0, column];
-        double originalObj = _result.ObjectiveValue;
-        double newObj = originalObj + reducedCost * newValue;
-
-        // Update all basic variables
-        for (int i = 1; i < clone.RowCount; i++)
-        {
-            double coeff = grid[i, column];
-            grid[i, rhsCol] -= coeff * newValue;
-            if (grid[i, rhsCol] < 0 && Math.Abs(grid[i, rhsCol]) < 1e-10)
-                grid[i, rhsCol] = 0;
-        }
-
-        // The non-basic variable now has a value
-        // In the tableau, we would make it basic, but for simplicity, we just record the change
-
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
-        {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(newObj, 6),
-            FinalTableau = clone,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Changed non-basic variable {GetColumnName(column)} to {newValue}"
-        };
-
-        return result;
+        // The paired range operation reports the range of this variable's OBJECTIVE
+        // COEFFICIENT, so the change has to be the same quantity or the two do not describe
+        // the same thing. An objective coefficient may be negative.
+        return ChangeObjectiveCoefficient(column, newValue, "Non-basic");
     }
 
     /// <summary>
@@ -284,32 +365,28 @@ public class SensitivityAnalyzer
     {
         ValidateColumn(column);
 
-        if (newValue < 0)
-            throw new LpException("Basic variable value must be non-negative.");
+        if (FindBasicRow(column) == -1)
+            throw new LpException($"{ColumnName(column)} is not basic. Use ChangeNonBasicVariable instead.");
 
-        int basicRow = FindBasicRow(column);
-        if (basicRow == -1)
-            throw new LpException($"Column {column} is not a basic variable. Use ChangeNonBasicVariable instead.");
+        return ChangeObjectiveCoefficient(column, newValue, "Basic");
+    }
 
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
-        int rhsCol = clone.RhsColumn;
+    /// <summary>
+    /// Changes the objective coefficient of the variable occupying the given column, then
+    /// re-solves. Shared by the basic and non-basic cases, which differ only in validation.
+    /// </summary>
+    private SolveResult ChangeObjectiveCoefficient(int column, double newValue, string role)
+    {
+        var variable = VariableIndexForColumn(column);
+        var modified = CloneModel();
+        var previous = modified.ObjectiveCoefficients[variable];
 
-        // Update the basic variable value
-        grid[basicRow, rhsCol] = newValue;
+        modified.ObjectiveCoefficients[variable] = newValue;
 
-        // Re-optimize if needed (simplified: just update the solution)
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
-        {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(_result.ObjectiveValue, 6),
-            FinalTableau = clone,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Changed basic variable {GetColumnName(column)} to {newValue}"
-        };
-
-        return result;
+        return ReSolve(
+            modified,
+            $"{role} variable x{variable + 1}: objective coefficient changed from " +
+            $"{previous:0.###} to {newValue:0.###}.");
     }
 
     /// <summary>
@@ -320,58 +397,68 @@ public class SensitivityAnalyzer
         ValidateConstraintRow(constraintRow);
 
         var grid = _optimal.Grid;
-        int tableauRow = constraintRow + 1; // +1 for objective row
-        double currentValue = grid[tableauRow, _optimal.RhsColumn];
+        var rhsColumn = _optimal.RhsColumn;
 
-        // The range of RHS is determined by the shadow price and the inverse basis
-        double lower = double.NegativeInfinity;
-        double upper = double.PositiveInfinity;
+        // The relevant column of the basis inverse is the column of whichever variable STARTED
+        // basic in this row: the slack of a <= row, or the artificial of a >= or = row. In the
+        // optimal tableau that column holds B^-1 times a unit vector, which is exactly the
+        // column of B^-1 for this constraint.
+        var sign = 1.0;
+        var column = FindColumnByLabel("s" + (constraintRow + 1));
 
-        // Check each non-basic variable
-        for (int j = 0; j < _numColumns; j++)
+        if (column < 0)
+            column = FindColumnByLabel("a" + (constraintRow + 1));
+
+        if (column < 0)
         {
-            if (FindBasicRow(j) != -1) continue; // Skip basic variables
+            // A surplus carries -1 rather than +1, so its tableau column is the negation.
+            column = FindColumnByLabel("e" + (constraintRow + 1));
+            sign = -1.0;
+        }
 
-            double coeff = grid[tableauRow, j];
-            double reducedCost = grid[0, j];
+        if (column < 0)
+        {
+            throw new LpException(
+                $"Cannot locate the basis column for constraint {constraintRow + 1}, so its " +
+                "right-hand-side range cannot be computed.");
+        }
 
-            if (coeff > 0)
+        // Raising this right-hand side by delta moves every basic value by delta times that
+        // column. The basis stays optimal for as long as they all stay non-negative, so the
+        // range runs from the tightest lower limit to the tightest upper one.
+        var lowerDelta = double.NegativeInfinity;
+        var upperDelta = double.PositiveInfinity;
+
+        for (var r = 1; r < _optimal.RowCount; r++)
+        {
+            var direction = sign * grid[r, column];
+            var basicValue = grid[r, rhsColumn];
+
+            if (direction > 1e-9)
             {
-                if (_optimal.OriginalObjectiveType == ProblemType.Max)
-                {
-                    double bound = -reducedCost / coeff;
-                    if (bound < upper)
-                        upper = bound;
-                }
-                else
-                {
-                    double bound = -reducedCost / coeff;
-                    if (bound > lower)
-                        lower = bound;
-                }
+                var limit = -basicValue / direction;
+                if (limit > lowerDelta)
+                    lowerDelta = limit;
             }
-            else if (coeff < 0)
+            else if (direction < -1e-9)
             {
-                if (_optimal.OriginalObjectiveType == ProblemType.Max)
-                {
-                    double bound = -reducedCost / coeff;
-                    if (bound > lower)
-                        lower = bound;
-                }
-                else
-                {
-                    double bound = -reducedCost / coeff;
-                    if (bound < upper)
-                        upper = bound;
-                }
+                var limit = -basicValue / direction;
+                if (limit < upperDelta)
+                    upperDelta = limit;
             }
         }
 
-        string subject = $"RHS of constraint {constraintRow + 1}";
-        return new SensitivityRange(subject,
-            lower == double.NegativeInfinity ? double.NegativeInfinity : Math.Round(lower, 6),
-            upper == double.PositiveInfinity ? double.PositiveInfinity : Math.Round(upper, 6),
-            Math.Round(currentValue, 6));
+        // The current value is the right-hand side the user wrote, not the basic variable
+        // sitting in that row of the final tableau - those are different numbers.
+        var current = _model != null
+            ? _model.Constraints[constraintRow].RHS
+            : grid[constraintRow + 1, rhsColumn];
+
+        return new SensitivityRange(
+            $"RHS of constraint {constraintRow + 1}",
+            double.IsNegativeInfinity(lowerDelta) ? double.NegativeInfinity : Math.Round(current + lowerDelta, 6),
+            double.IsPositiveInfinity(upperDelta) ? double.PositiveInfinity : Math.Round(current + upperDelta, 6),
+            Math.Round(current, 6));
     }
 
     /// <summary>
@@ -381,28 +468,18 @@ public class SensitivityAnalyzer
     {
         ValidateConstraintRow(constraintRow);
 
-        if (newValue < 0)
-            throw new LpException("RHS value must be non-negative.");
+        // A negative right-hand side is legitimate; the canonicalizer multiplies such a row
+        // through by -1 and flips its relation.
+        var modified = CloneModel();
+        var original = modified.Constraints[constraintRow];
 
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
-        int tableauRow = constraintRow + 1;
-        int rhsCol = clone.RhsColumn;
+        modified.Constraints[constraintRow] =
+            new Constraint(original.Coefficients, original.RelationalOperator, newValue);
 
-        // Update the RHS
-        grid[tableauRow, rhsCol] = newValue;
-
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
-        {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(_result.ObjectiveValue, 6),
-            FinalTableau = clone,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Changed RHS of constraint {constraintRow + 1} to {newValue}"
-        };
-
-        return result;
+        return ReSolve(
+            modified,
+            $"Right-hand side of constraint {constraintRow + 1} changed from " +
+            $"{original.RHS:0.###} to {newValue:0.###}.");
     }
 
     /// <summary>
@@ -448,31 +525,23 @@ public class SensitivityAnalyzer
         ValidateColumn(column);
         ValidateConstraintRow(constraintRow);
 
-        int basicRow = FindBasicRow(column);
-        if (basicRow != -1)
-            throw new LpException($"Column {column} is a basic variable. Coefficient change is only defined for non-basic variables.");
-
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
-        int tableauRow = constraintRow + 1;
-
-        // Update the coefficient
-        grid[tableauRow, column] = newValue;
-
-        // Recalculate reduced cost
-        // This is a simplified approach - in practice, you'd need to recompute the basis
-
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
+        if (FindBasicRow(column) != -1)
         {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(_result.ObjectiveValue, 6),
-            FinalTableau = clone,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Changed coefficient of {GetColumnName(column)} in constraint {constraintRow + 1} to {newValue}"
-        };
+            throw new LpException(
+                $"{ColumnName(column)} is basic. A technological coefficient change is only " +
+                "defined for a non-basic column.");
+        }
 
-        return result;
+        var variable = VariableIndexForColumn(column);
+        var modified = CloneModel();
+        var previous = modified.Constraints[constraintRow].Coefficients[variable];
+
+        modified.Constraints[constraintRow].Coefficients[variable] = newValue;
+
+        return ReSolve(
+            modified,
+            $"Coefficient of x{variable + 1} in constraint {constraintRow + 1} changed from " +
+            $"{previous:0.###} to {newValue:0.###}.");
     }
 
     /// <summary>
@@ -482,66 +551,29 @@ public class SensitivityAnalyzer
     {
         if (constraintCoefficients == null)
             throw new LpException("Constraint coefficients array is null.");
-        if (constraintCoefficients.Length != _numConstraints)
-            throw new LpException($"Expected {_numConstraints} constraint coefficients, got {constraintCoefficients.Length}.");
 
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
-        int oldColumns = clone.ColumnCount - 1;
+        var modified = CloneModel();
 
-        // We need to add a new column to the grid
-        // This requires creating a new grid
-        int newColCount = oldColumns + 1;
-        int rows = clone.RowCount;
-        int rhsCol = newColCount;
-
-        var newGrid = new double[rows, newColCount + 1]; // +1 for RHS
-
-        // Copy old grid
-        for (int i = 0; i < rows; i++)
+        if (constraintCoefficients.Length != modified.Constraints.Count)
         {
-            for (int j = 0; j < oldColumns; j++)
-            {
-                newGrid[i, j] = grid[i, j];
-            }
-            newGrid[i, rhsCol] = grid[i, _optimal.RhsColumn];
+            throw new LpException(
+                $"Expected {modified.Constraints.Count} constraint coefficients, one per " +
+                $"constraint, got {constraintCoefficients.Length}.");
         }
 
-        // Add new column coefficients
-        newGrid[0, oldColumns] = -objectiveCoefficient; // Negative for standard form
-        for (int i = 0; i < constraintCoefficients.Length; i++)
-        {
-            newGrid[i + 1, oldColumns] = constraintCoefficients[i];
-        }
+        // A new activity is a new decision variable: one more objective coefficient, one more
+        // entry in every constraint, and one more sign restriction.
+        modified.ObjectiveCoefficients.Add(objectiveCoefficient);
 
-        // Update labels, masks, etc.
-        var newLabels = new List<string>(clone.ColumnLabels);
-        newLabels.Add($"x{newLabels.Count}");
+        for (var i = 0; i < modified.Constraints.Count; i++)
+            modified.Constraints[i].Coefficients.Add(constraintCoefficients[i]);
 
-        var newIntMask = new bool[newColCount + 1];
-        var newBinMask = new bool[newColCount + 1];
-        Array.Copy(clone.IsIntegerMask, newIntMask, clone.IsIntegerMask.Length);
-        Array.Copy(clone.IsBinaryMask, newBinMask, clone.IsBinaryMask.Length);
+        modified.Restrictions.Add(SignRestriction.Positive);
 
-        var newBasic = new int[clone.BasicVariables.Length];
-        Array.Copy(clone.BasicVariables, newBasic, clone.BasicVariables.Length);
-
-        var newCanonical = new CanonicalMatrix(newGrid, newBasic, newLabels, newIntMask, newBinMask)
-        {
-            OriginalObjectiveType = clone.OriginalObjectiveType
-        };
-
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
-        {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(_result.ObjectiveValue, 6),
-            FinalTableau = newCanonical,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Added new activity with objective coefficient {objectiveCoefficient}"
-        };
-
-        return result;
+        return ReSolve(
+            modified,
+            $"New activity x{modified.ObjectiveCoefficients.Count} added with objective " +
+            $"coefficient {objectiveCoefficient:0.###}.");
     }
 
     /// <summary>
@@ -551,65 +583,25 @@ public class SensitivityAnalyzer
     {
         if (coefficients == null)
             throw new LpException("Coefficients array is null.");
-        if (coefficients.Length != _numColumns)
-            throw new LpException($"Expected {_numColumns} coefficients, got {coefficients.Length}.");
 
-        // Create a clone of the optimal tableau
-        var clone = _optimal.Clone();
-        var grid = clone.Grid;
+        var modified = CloneModel();
+        var variableCount = modified.DecisionVariableCount;
 
-        // We need to add a new row to the grid
-        int oldRows = clone.RowCount;
-        int cols = clone.ColumnCount;
-        int newRowCount = oldRows + 1;
-
-        var newGrid = new double[newRowCount, cols];
-
-        // Copy old grid
-        for (int i = 0; i < oldRows; i++)
+        // One coefficient per DECISION VARIABLE, not per grid column. The user adding a
+        // constraint thinks in terms of x1..xn; slack and artificial columns are ours, not
+        // theirs, and canonicalization will create whatever the new row needs.
+        if (coefficients.Length != variableCount)
         {
-            for (int j = 0; j < cols; j++)
-            {
-                newGrid[i, j] = grid[i, j];
-            }
+            throw new LpException(
+                $"Expected {variableCount} coefficients, one per decision variable, got " +
+                $"{coefficients.Length}.");
         }
 
-        // Add new constraint row
-        int newRow = oldRows;
-        int rhsCol = clone.RhsColumn;
-        newGrid[newRow, rhsCol] = rhs;
+        modified.Constraints.Add(new Constraint(new List<double>(coefficients), relation, rhs));
 
-        for (int j = 0; j < coefficients.Length && j < cols - 1; j++)
-        {
-            newGrid[newRow, j] = coefficients[j];
-        }
-
-        // Add a slack or artificial variable as needed
-        var newLabels = new List<string>(clone.ColumnLabels);
-        var newIntMask = new bool[cols];
-        var newBinMask = new bool[cols];
-        Array.Copy(clone.IsIntegerMask, newIntMask, clone.IsIntegerMask.Length);
-        Array.Copy(clone.IsBinaryMask, newBinMask, clone.IsBinaryMask.Length);
-
-        var newBasic = new int[clone.BasicVariables.Length + 1];
-        Array.Copy(clone.BasicVariables, newBasic, clone.BasicVariables.Length);
-        // The last basic variable will be set by the solver
-
-        var newCanonical = new CanonicalMatrix(newGrid, newBasic, newLabels, newIntMask, newBinMask)
-        {
-            OriginalObjectiveType = clone.OriginalObjectiveType
-        };
-
-        var result = new SolveResult(_result.AlgorithmName + " (Modified)")
-        {
-            Status = SolutionStatus.Optimal,
-            ObjectiveValue = Math.Round(_result.ObjectiveValue, 6),
-            FinalTableau = newCanonical,
-            VariableValues = _result.VariableValues?.ToArray() ?? Array.Empty<double>(),
-            Message = $"Added new constraint with RHS {rhs}"
-        };
-
-        return result;
+        return ReSolve(
+            modified,
+            $"New constraint added as constraint {modified.Constraints.Count}.");
     }
 
     /// <summary>
@@ -618,51 +610,48 @@ public class SensitivityAnalyzer
     public double[] ShadowPrices()
     {
         var grid = _optimal.Grid;
-        var shadowPrices = new double[_numConstraints];
+        var prices = new double[_numConstraints];
 
-        // Shadow prices are the negative of the reduced costs of the slack variables
-        // In the optimal tableau, they appear in the objective row under the slack columns
-        for (int i = 0; i < _numConstraints; i++)
+        for (var i = 0; i < _numConstraints; i++)
         {
-            // Find the slack variable for constraint i
-            // Slack variables are typically named "s{i+1}"
-            string slackName = $"s{i + 1}";
-            int slackCol = -1;
+            // The dual value of a row is the reduced cost of whichever added column carries
+            // +1 in that row and zero elsewhere: the slack of a <= row, or the artificial of
+            // a >= or = row. The surplus of a >= row carries -1, so its reduced cost is the
+            // negation - the two are not interchangeable.
+            var sign = 1.0;
+            var column = FindColumnByLabel("s" + (i + 1));
 
-            for (int j = 0; j < _numColumns; j++)
+            if (column < 0)
+                column = FindColumnByLabel("a" + (i + 1));
+
+            if (column < 0)
             {
-                if (_optimal.ColumnLabels[j] == slackName)
-                {
-                    slackCol = j;
-                    break;
-                }
+                column = FindColumnByLabel("e" + (i + 1));
+                sign = -1.0;
             }
 
-            if (slackCol >= 0)
-            {
-                // Shadow price = -reduced cost of slack (for maximization)
-                double reducedCost = grid[0, slackCol];
-                shadowPrices[i] = _optimal.OriginalObjectiveType == ProblemType.Max ? -reducedCost : reducedCost;
-            }
-            else
-            {
-                // Try to find the surplus/artificial variable
-                string surplusName = $"e{i + 1}";
-                string artificialName = $"a{i + 1}";
+            if (column < 0)
+                continue;
 
-                for (int j = 0; j < _numColumns; j++)
-                {
-                    if (_optimal.ColumnLabels[j] == surplusName || _optimal.ColumnLabels[j] == artificialName)
-                    {
-                        shadowPrices[i] = _optimal.OriginalObjectiveType == ProblemType.Max ?
-                            -grid[0, j] : grid[0, j];
-                        break;
-                    }
-                }
-            }
+            // Row 0 holds z_j - c_j, which for such a column is the dual value itself, with no
+            // negation. For a Min problem the canonicalizer normalised the objective by
+            // negating it, so the dual has to be negated back the same way the objective is.
+            var dual = sign * grid[0, column];
+            prices[i] = _optimal.OriginalObjectiveType == ProblemType.Min ? -dual : dual;
         }
 
-        return shadowPrices.Select(p => Math.Round(p, 6)).ToArray();
+        return prices.Select(p => Math.Round(p, 6)).ToArray();
+    }
+
+    private int FindColumnByLabel(string label)
+    {
+        for (var j = 0; j < _numColumns; j++)
+        {
+            if (_optimal.ColumnLabels[j] == label)
+                return j;
+        }
+
+        return -1;
     }
 
     // Helper methods

@@ -79,16 +79,13 @@ public class DualityAnalyzer
             if (j < primal.ObjectiveCoefficients.Count)
             {
                 dualRhs = primal.ObjectiveCoefficients[j];
-                // For Min primal, flip signs in dual constraints
-                if (primal.ObjectiveType == ProblemType.Min)
-                {
-                    dualRhs = -dualRhs;
-                    // Flip coefficients too for Min primal
-                    for (int k = 0; k < dualCoeffs.Count; k++)
-                    {
-                        dualCoeffs[k] = -dualCoeffs[k];
-                    }
-                }
+
+                // No sign flipping here. The transpose is already complete: the relation was
+                // chosen above from the primal variable's sign restriction, and the dual
+                // variables get their own restrictions from the primal constraint types below.
+                // Negating both the coefficients and the right-hand side without also
+                // reversing the relation turns A'y <= c into A'y >= c, which is a different
+                // problem - it made the dual of a Min model unbounded.
             }
 
             dualConstraints.Add(new Constraint(dualCoeffs, dualRelation, dualRhs));

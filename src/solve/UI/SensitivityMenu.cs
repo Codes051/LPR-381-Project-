@@ -21,7 +21,9 @@ public class SensitivityMenu
     {
         _parsed = parsed;
         _result = result;
-        _analyzer = new SensitivityAnalyzer(result);
+        // The model is passed through so the "apply a change" operations can rebuild it with
+        // the change made and solve it again, rather than patching the optimal tableau.
+        _analyzer = new SensitivityAnalyzer(result, parsed);
         _duality = new DualityAnalyzer();
     }
 
@@ -180,12 +182,17 @@ public class SensitivityMenu
 
     private void HandleRangeOfRhs()
     {
-        Console.Write("Enter constraint row index (0-based): ");
-        if (!int.TryParse(Console.ReadLine(), out int constraintRow))
+        // Numbered from 1, matching how the shadow price display and the tableau row labels
+        // name constraints. Asking for a 0-based index here while printing 1-based labels
+        // everywhere else is how someone changes the wrong constraint on camera.
+        Console.Write("Enter constraint number (1-based): ");
+        if (!int.TryParse(Console.ReadLine(), out int constraintNumber))
         {
-            Console.WriteLine("Invalid constraint index.");
+            Console.WriteLine("Invalid constraint number.");
             return;
         }
+
+        int constraintRow = constraintNumber - 1;
 
         var range = _analyzer.RangeOfRhs(constraintRow);
         DisplayRange(range);
@@ -193,12 +200,17 @@ public class SensitivityMenu
 
     private void HandleChangeRhs()
     {
-        Console.Write("Enter constraint row index (0-based): ");
-        if (!int.TryParse(Console.ReadLine(), out int constraintRow))
+        // Numbered from 1, matching how the shadow price display and the tableau row labels
+        // name constraints. Asking for a 0-based index here while printing 1-based labels
+        // everywhere else is how someone changes the wrong constraint on camera.
+        Console.Write("Enter constraint number (1-based): ");
+        if (!int.TryParse(Console.ReadLine(), out int constraintNumber))
         {
-            Console.WriteLine("Invalid constraint index.");
+            Console.WriteLine("Invalid constraint number.");
             return;
         }
+
+        int constraintRow = constraintNumber - 1;
 
         Console.Write("Enter new RHS value: ");
         if (!double.TryParse(Console.ReadLine(), out double newValue))
@@ -220,12 +232,17 @@ public class SensitivityMenu
             return;
         }
 
-        Console.Write("Enter constraint row index (0-based): ");
-        if (!int.TryParse(Console.ReadLine(), out int constraintRow))
+        // Numbered from 1, matching how the shadow price display and the tableau row labels
+        // name constraints. Asking for a 0-based index here while printing 1-based labels
+        // everywhere else is how someone changes the wrong constraint on camera.
+        Console.Write("Enter constraint number (1-based): ");
+        if (!int.TryParse(Console.ReadLine(), out int constraintNumber))
         {
-            Console.WriteLine("Invalid constraint index.");
+            Console.WriteLine("Invalid constraint number.");
             return;
         }
+
+        int constraintRow = constraintNumber - 1;
 
         var range = _analyzer.RangeOfCoefficientInNonBasicColumn(column, constraintRow);
         DisplayRange(range);
@@ -240,12 +257,17 @@ public class SensitivityMenu
             return;
         }
 
-        Console.Write("Enter constraint row index (0-based): ");
-        if (!int.TryParse(Console.ReadLine(), out int constraintRow))
+        // Numbered from 1, matching how the shadow price display and the tableau row labels
+        // name constraints. Asking for a 0-based index here while printing 1-based labels
+        // everywhere else is how someone changes the wrong constraint on camera.
+        Console.Write("Enter constraint number (1-based): ");
+        if (!int.TryParse(Console.ReadLine(), out int constraintNumber))
         {
-            Console.WriteLine("Invalid constraint index.");
+            Console.WriteLine("Invalid constraint number.");
             return;
         }
+
+        int constraintRow = constraintNumber - 1;
 
         Console.Write("Enter new coefficient value: ");
         if (!double.TryParse(Console.ReadLine(), out double newValue))

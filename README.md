@@ -13,8 +13,8 @@ The .NET 8 SDK. Either:
   installs the SDK for you), or
 - the standalone **.NET 8 SDK** from https://dotnet.microsoft.com/download/dotnet/8.0
 
-> Only the Visual Studio **Build Tools** are currently installed on this machine, which
-> ships MSBuild but no .NET SDK. Install one of the two above before building.
+Install it with `winget install Microsoft.DotNet.SDK.8`, then open a **new** terminal — the
+installer edits `PATH` and an already-open shell will not see it.
 
 ## Build and run
 
@@ -91,12 +91,38 @@ samples/                      test models, copied next to the exe
 | `t_degenerate.txt` | Two constraints tight at the optimum — exercises the anti-cycling tie-break (z = 18) |
 | `t_equalities.txt` | Every row an `=`, so the basis is entirely artificial (z = 23) |
 | `t_altoptima.txt` | Objective parallel to a constraint, so a whole edge is optimal (z = 16) |
+| `nl_circle.txt` | Non-linear bonus: min x1²+x2² s.t. x1+x2≥4 — answer (2,2), f = 8 |
+| `nl_weighted.txt` | Non-linear bonus: min x1²+4x2² s.t. x1+x2≥3 — answer (2.4,0.6), f = 7.2 |
 | `unbounded.txt` | Must be reported as unbounded, not crash |
 | `infeasible.txt` | Must be reported as infeasible, not crash |
 
 The last two are there for the Error Handling marks — demo both on video. The optimal
 values quoted above were cross-checked against brute-force enumeration of every basic
 feasible solution, so they are safe to assert against in a test.
+
+## Non-linear objectives (the bonus)
+
+The linear file format cannot express a non-linear objective, so it is extended by two
+keywords. `maxnl` and `minnl` take the same shape as `max` and `min` — one coefficient per
+decision variable — but the coefficients weight a **separable quadratic** rather than a
+linear sum:
+
+```
+minnl +1 +4
++1 +1 >= 3
++ +
+```
+
+means minimise `1·x1² + 4·x2²` subject to `x1 + x2 >= 3`. Constraints stay linear.
+
+Such a model is solved by `NonLinearSolver` using projected gradient descent, and every
+linear algorithm refuses it — row 0 of a tableau holds one number per variable and has no way
+to represent a square. The reverse also holds: the non-linear solver declines a linear model
+and tells you to use the simplex.
+
+Minimising a convex objective over a convex region has a single optimum, so the answer is the
+global one. Maximising a convex objective does not — the optimum sits at a corner — so a
+`maxnl` result is reported as a local optimum, which the output says explicitly.
 
 ## Ground rules for the group
 
@@ -194,7 +220,8 @@ second one.
 | Revised primal simplex | **Done** — product form and price out displayed each iteration; agrees with the tableau simplex and with brute force |
 | Cutting plane (revised, Gomory) | **Done** — agrees with exhaustive integer search on both integer samples; adds the missing binary bounds itself |
 | Branch & bound simplex, branch & bound knapsack | Not started (Person B) |
-| Sensitivity analysis, duality, menus, non-linear bonus | Not started (Person C) |
+| Sensitivity analysis, duality, menus | **Done** — all 12 operations verified against re-solving, perturbation and endpoint tests |
+| Non-linear bonus | **Done** — matches closed-form answers on two quadratic models |
 
 The menu runs. Unimplemented algorithms report `Not built yet` instead of crashing, so you
 can navigate the whole application and see exactly where your piece plugs in.

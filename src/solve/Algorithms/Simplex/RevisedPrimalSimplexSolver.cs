@@ -44,7 +44,8 @@ public class RevisedPrimalSimplexSolver : ISolver
 
     public string Name => "Revised Primal Simplex Algorithm";
 
-    public bool CanSolve(CanonicalMatrix model) => model != null && !model.IsIntegerProblem;
+    public bool CanSolve(CanonicalMatrix model) =>
+        model != null && !model.IsNonLinear && !model.IsIntegerProblem;
 
     public SolveResult Solve(CanonicalMatrix model)
     {

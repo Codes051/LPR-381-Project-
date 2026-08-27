@@ -59,6 +59,7 @@ public class Canonicalizer
         return new CanonicalMatrix(grid, basicVariables, labels, isInteger, isBinary)
         {
             OriginalObjectiveType = model.ObjectiveType,
+            IsNonLinear = model.IsNonLinear,
             ColumnTypes = BuildColumnTypes(model, variableColumns, totalColumns),
             VariableMap = map
         };

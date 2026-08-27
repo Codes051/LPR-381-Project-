@@ -1,253 +1,322 @@
-using Solve.Models;
 using Solve.Exceptions;
-using System;
+using Solve.Models;
+using Solve.Output;
 
 namespace Solve.Algorithms.NonLinear;
 
+// ============================================================================
+//  OWNER: Person C
+//  Marks: Non-linear problem solved (+10 BONUS, on top of the 100)
+//
+//  This is the one part of the project where the brief asks for the CODE to be
+//  explained on video, so the method below is written to be explainable: three
+//  short steps repeated until nothing moves.
+// ============================================================================
+
 /// <summary>
-/// BONUS: Solves non-linear problems like f(x) = x^2.
-/// This solver uses gradient descent to find the minimum of a non-linear objective
-/// subject to linear constraints.
+/// Solves a model whose objective is quadratic and whose constraints are linear, by
+/// projected gradient descent.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>The problem.</b> An input file whose objective line begins <c>minnl</c> or <c>maxnl</c>
+/// declares a separable quadratic objective: the coefficients weight squares rather than a
+/// linear sum, so <c>minnl +1 +1</c> means minimise x1 squared plus x2 squared. The
+/// constraints stay linear. The plain simplex cannot touch this, because row 0 of a tableau
+/// holds one number per variable and a quadratic has no such representation.
+/// </para>
+/// <para>
+/// <b>The method.</b> Three steps, repeated:
+/// </para>
+/// <list type="number">
+/// <item>Evaluate the gradient. For f(x) = sum of c_j x_j squared, the derivative with
+/// respect to x_j is 2 c_j x_j, so the gradient is immediate and needs no approximation.</item>
+/// <item>Take a step downhill (or uphill when maximising), scaled by a step size that shrinks
+/// as the search settles.</item>
+/// <item>Project the result back onto the feasible region. The step ignores the constraints,
+/// so it usually lands outside; the projection walks it back.</item>
+/// </list>
+/// <para>
+/// <b>The projection</b> is the only part that is not one line. The feasible region is an
+/// intersection of half-spaces, and there is no closed form for the nearest point in it. But
+/// projecting onto a SINGLE half-space is elementary geometry - move along the normal just
+/// far enough to reach the boundary - and cycling through the constraints, projecting onto
+/// each violated one in turn, converges to a point in the intersection. That is the method of
+/// alternating projections.
+/// </para>
+/// <para>
+/// <b>What it guarantees.</b> Minimising a convex objective over a convex region has one
+/// optimum and gradient descent finds it. Maximising a convex objective does not: the maximum
+/// sits at a corner and the search can settle at whichever corner it reaches first, so the
+/// result is reported as a local optimum rather than claimed as the global one.
+/// </para>
+/// </remarks>
 public class NonLinearSolver : ISolver
 {
+    /// <summary>Stop once a step moves the point by less than this.</summary>
+    private const double ConvergenceTolerance = 1e-9;
+
+    private const int MaximumIterations = 5000;
+
+    /// <summary>Inner sweeps used to walk an infeasible point back into the region.</summary>
+    private const int ProjectionSweeps = 200;
+
     public string Name => "Non-linear Solver (bonus)";
 
-    public bool CanSolve(CanonicalMatrix model)
-    {
-        if (model == null) return false;
+    public bool CanSolve(CanonicalMatrix model) => model != null && model.IsNonLinear;
 
-        // Detect if this is a non-linear problem
-        // For now, we'll check if there's any indication of non-linearity
-        // In practice, you'd need to parse the input differently to detect non-linear objectives
-
-        // This is a placeholder - in a real implementation, you'd need to detect
-        // non-linear terms in the objective function or constraints
-        // For the bonus, we'll just check if the model has any integer/binary variables
-        // (non-linear problems are often mixed-integer)
-        return model.IsIntegerProblem;
-    }
-
-    /// <summary>
-    /// Solves a non-linear problem using gradient descent with projection onto the feasible region.
-    /// For f(x) = x^2, this finds the minimum at x = 0 (subject to constraints).
-    /// </summary>
     public SolveResult Solve(CanonicalMatrix model)
     {
         if (model == null)
-            throw new LpException("Model is null.");
+            throw new ArgumentNullException(nameof(model));
 
-        // Clone the model to avoid modifying the original
-        var clone = model.Clone();
-        var grid = clone.Grid;
-        int numVars = model.ColumnCount - 1; // Exclude RHS
-        int numConstraints = model.ConstraintCount;
-
-        // Extract the current solution from the tableau
-        var solution = new double[numVars];
-        var basicVariables = clone.BasicVariables;
-
-        // Get variable values from the tableau
-        for (int i = 0; i < basicVariables.Length; i++)
+        if (!model.IsNonLinear)
         {
-            int basicCol = basicVariables[i];
-            if (basicCol >= 0 && basicCol < numVars)
-            {
-                solution[basicCol] = grid[i + 1, clone.RhsColumn];
-            }
+            throw new LpException(
+                "This model has a linear objective. Use one of the simplex algorithms, or " +
+                "write the objective with maxnl or minnl to declare it quadratic.");
         }
 
-        // For f(x) = x^2, the gradient is 2x
-        // We'll use gradient descent to find the minimum
-        double learningRate = 0.1;
-        double tolerance = 1e-6;
-        int maxIterations = 1000;
-        double currentObjective = EvaluateObjective(solution);
-
         var result = new SolveResult(Name);
-        var iterationNumber = 0;
+        result.Iterations.Add(Tableau.Snapshot("Canonical Form", model));
 
-        // Record the initial tableau
-        result.Iterations.Add(new Tableau(
-            "Initial - Non-linear Solver (Bonus)",
-            (double[,])clone.Grid.Clone(),
-            (int[])clone.BasicVariables.Clone(),
-            new System.Collections.Generic.List<string>(clone.ColumnLabels))
+        var variableCount = model.DecisionVariableCount;
+        var weights = ObjectiveWeights(model, variableCount);
+        var maximising = model.OriginalObjectiveType == ProblemType.Max;
+
+        // Start from the origin walked into the feasible region, which needs no starting guess
+        // from the user and is reproducible run to run.
+        var point = new double[variableCount];
+        Project(point, model, variableCount);
+
+        RecordStep(result, model, point, weights, 0, "Starting Point",
+                   "The search starts at the origin projected into the feasible region.");
+
+        var stepSize = 0.1;
+        var iteration = 0;
+        var converged = false;
+
+        while (iteration < MaximumIterations)
         {
-            Note = $"Starting solution with objective value: {currentObjective:F6}"
-        });
+            iteration++;
 
-        // Gradient descent loop
-        for (int iter = 0; iter < maxIterations; iter++)
-        {
-            // Compute gradient
-            var gradient = ComputeGradient(solution);
+            var previous = (double[])point.Clone();
 
-            // Step in the negative gradient direction
-            var newSolution = new double[solution.Length];
-            for (int i = 0; i < solution.Length; i++)
+            // Step 1 and 2: gradient, then a step along it.
+            for (var j = 0; j < variableCount; j++)
             {
-                newSolution[i] = solution[i] - learningRate * gradient[i];
-                // Ensure non-negativity
-                if (newSolution[i] < 0) newSolution[i] = 0;
+                var slope = 2.0 * weights[j] * point[j];
+                point[j] += maximising ? stepSize * slope : -stepSize * slope;
             }
 
-            // Project onto feasible region (simplified: just ensure constraints are satisfied)
-            ProjectOntoFeasibleRegion(newSolution, clone);
+            // Step 3: the step ignored the constraints, so walk back into the region.
+            Project(point, model, variableCount);
 
-            double newObjective = EvaluateObjective(newSolution);
+            var movement = Distance(previous, point);
 
-            // Check for convergence
-            if (Math.Abs(newObjective - currentObjective) < tolerance)
+            if (movement < ConvergenceTolerance)
             {
-                // Record final iteration
-                var finalGrid = CreateGridFromSolution(clone, newSolution);
-                result.Iterations.Add(new Tableau(
-                    $"Iteration {iter + 1} - Converged",
-                    finalGrid,
-                    clone.BasicVariables,
-                    new System.Collections.Generic.List<string>(clone.ColumnLabels))
-                {
-                    Note = $"Objective value: {newObjective:F6}, Converged to minimum"
-                });
-
-                currentObjective = newObjective;
-                solution = newSolution;
+                converged = true;
                 break;
             }
 
-            // Record this iteration
-            var iterGrid = CreateGridFromSolution(clone, newSolution);
-            result.Iterations.Add(new Tableau(
-                $"Iteration {iter + 1}",
-                iterGrid,
-                clone.BasicVariables,
-                new System.Collections.Generic.List<string>(clone.ColumnLabels))
-            {
-                Note = $"Objective value: {newObjective:F6}, Step size: {learningRate:F6}"
-            });
+            // Shrinking the step keeps the search from oscillating across the optimum once it
+            // is close, which a fixed step does on a steep quadratic.
+            stepSize *= 0.999;
 
-            solution = newSolution;
-            currentObjective = newObjective;
-            iterationNumber = iter + 1;
+            // Recording every one of several thousand iterations would bury the output file,
+            // so the early ones and then a sample are kept.
+            if (iteration <= 5 || iteration % 250 == 0)
+            {
+                RecordStep(result, model, point, weights, iteration, $"Iteration {iteration}",
+                           $"Moved {OutputWriter.Format(movement)} this step.");
+            }
         }
 
-        // Update the final tableau with the solution
-        var finalGrid2 = CreateGridFromSolution(clone, solution);
+        RecordStep(result, model, point, weights, iteration, "Final Point",
+                   converged
+                       ? $"Converged after {iteration} iterations: a further step moves the point " +
+                         "by less than the tolerance."
+                       : $"Stopped at the iteration cap of {MaximumIterations}.");
 
-        // Build the result
         result.Status = SolutionStatus.Optimal;
-        result.ObjectiveValue = currentObjective;
-        result.VariableValues = solution;
-        result.FinalTableau = clone;
-        result.Message = $"Non-linear solver converged in {iterationNumber} iterations. " +
-                        $"For f(x) = x², the minimum is at x = 0 (subject to constraints).";
-
-        // Add best candidate description for non-linear problems
-        result.BestCandidateDescription = "Non-linear solution found using gradient descent:\n" +
-                                         $"Objective value: {currentObjective:F6}\n" +
-                                         $"Solution vector: [{string.Join(", ", solution.Select(v => v.ToString("F6")))}]";
-
+        result.ObjectiveValue = Evaluate(point, weights);
+        result.VariableValues = point;
+        result.FinalTableau = model;
+        result.BestCandidateDescription = Describe(point, weights, maximising, iteration);
         return result;
     }
 
     /// <summary>
-    /// Evaluates the non-linear objective function f(x) = x²
+    /// The weight on each squared term, read from the objective row of the canonical form.
     /// </summary>
-    private double EvaluateObjective(double[] x)
+    /// <remarks>
+    /// The canonicalizer stores the objective negated, and negated twice for a Min, so undoing
+    /// that recovers the coefficients as the user wrote them.
+    /// </remarks>
+    private static double[] ObjectiveWeights(CanonicalMatrix model, int variableCount)
     {
-        // For f(x) = x², the objective is sum of squares
-        double sum = 0;
-        foreach (double val in x)
+        var weights = new double[variableCount];
+        var minimising = model.OriginalObjectiveType == ProblemType.Min;
+
+        for (var j = 0; j < variableCount; j++)
         {
-            sum += val * val;
+            var stored = model.Grid[0, j];
+            weights[j] = minimising ? stored : -stored;
         }
-        return sum;
+
+        return weights;
+    }
+
+    private static double Evaluate(double[] point, double[] weights)
+    {
+        var total = 0.0;
+
+        for (var j = 0; j < point.Length; j++)
+            total += weights[j] * point[j] * point[j];
+
+        return total;
     }
 
     /// <summary>
-    /// Computes the gradient of f(x) = x², which is 2x
+    /// Walks a point back into the feasible region by repeatedly projecting it onto whichever
+    /// constraints it currently violates, and onto the non-negative orthant.
     /// </summary>
-    private double[] ComputeGradient(double[] x)
+    /// <remarks>
+    /// Projecting onto one half-space a.x &lt;= b is elementary: if the point violates it,
+    /// slide along the normal by exactly the amount of the violation divided by the squared
+    /// length of the normal. Repeating over all the constraints converges to a point in their
+    /// intersection, which is what makes this usable without a nested optimiser.
+    /// </remarks>
+    private static void Project(double[] point, CanonicalMatrix model, int variableCount)
     {
-        var gradient = new double[x.Length];
-        for (int i = 0; i < x.Length; i++)
+        for (var sweep = 0; sweep < ProjectionSweeps; sweep++)
         {
-            gradient[i] = 2 * x[i];
-        }
-        return gradient;
-    }
+            var worstViolation = 0.0;
 
-    /// <summary>
-    /// Projects a solution onto the feasible region defined by the constraints.
-    /// </summary>
-    private void ProjectOntoFeasibleRegion(double[] solution, CanonicalMatrix model)
-    {
-        var grid = model.Grid;
-        int rhsCol = model.RhsColumn;
-        int numConstraints = model.ConstraintCount;
-
-        // Check each constraint and project if violated
-        for (int i = 0; i < numConstraints; i++)
-        {
-            int row = i + 1;
-            double lhs = 0;
-
-            // Compute left-hand side
-            for (int j = 0; j < solution.Length && j < grid.GetLength(1) - 1; j++)
+            for (var row = 1; row < model.RowCount; row++)
             {
-                lhs += grid[row, j] * solution[j];
-            }
+                double normSquared = 0.0;
+                double activity = 0.0;
 
-            double rhs = grid[row, rhsCol];
-
-            // If constraint is violated, project back
-            // This is a simple projection - in practice, you'd need a more sophisticated approach
-            if (lhs > rhs)
-            {
-                // Scale down the solution to satisfy the constraint
-                double scale = rhs / lhs;
-                for (int j = 0; j < solution.Length; j++)
+                for (var j = 0; j < variableCount; j++)
                 {
-                    solution[j] *= scale;
+                    var coefficient = model.Grid[row, j];
+                    activity += coefficient * point[j];
+                    normSquared += coefficient * coefficient;
+                }
+
+                if (normSquared < 1e-12)
+                    continue;
+
+                var rhs = model.Grid[row, model.RhsColumn];
+
+                // The canonical form stores every row as a <= or an equality after its added
+                // variables are accounted for, so the sign of the surplus tells the direction.
+                var relationIsGreaterOrEqual = RowIsGreaterOrEqual(model, row);
+                var violation = relationIsGreaterOrEqual ? rhs - activity : activity - rhs;
+
+                if (violation <= 1e-12)
+                    continue;
+
+                worstViolation = Math.Max(worstViolation, violation);
+                var scale = violation / normSquared;
+
+                for (var j = 0; j < variableCount; j++)
+                {
+                    var coefficient = model.Grid[row, j];
+                    point[j] += relationIsGreaterOrEqual ? scale * coefficient : -scale * coefficient;
                 }
             }
+
+            // Every variable is non-negative, so clamping is the projection onto that part.
+            for (var j = 0; j < variableCount; j++)
+            {
+                if (point[j] < 0.0)
+                {
+                    worstViolation = Math.Max(worstViolation, -point[j]);
+                    point[j] = 0.0;
+                }
+            }
+
+            if (worstViolation <= 1e-12)
+                return;
         }
     }
 
     /// <summary>
-    /// Creates a grid from a solution vector
+    /// Whether a canonical row represents a >= constraint, which is true exactly when it
+    /// carries a surplus variable.
     /// </summary>
-    private double[,] CreateGridFromSolution(CanonicalMatrix model, double[] solution)
+    private static bool RowIsGreaterOrEqual(CanonicalMatrix model, int row)
     {
-        var grid = model.Grid;
-        int rows = grid.GetLength(0);
-        int cols = grid.GetLength(1);
-        var newGrid = new double[rows, cols];
+        if (model.ColumnTypes == null)
+            return false;
 
-        // Copy the original grid structure
-        for (int i = 0; i < rows; i++)
+        for (var j = 0; j < model.RhsColumn; j++)
         {
-            for (int j = 0; j < cols; j++)
-            {
-                newGrid[i, j] = grid[i, j];
-            }
+            if (model.ColumnTypes[j] == VariableType.Surplus && Math.Abs(model.Grid[row, j] + 1.0) < 1e-9)
+                return true;
         }
 
-        // Update the RHS column with the solution values
-        int rhsCol = cols - 1;
-        for (int i = 0; i < model.BasicVariables.Length; i++)
+        return false;
+    }
+
+    private static double Distance(double[] a, double[] b)
+    {
+        var total = 0.0;
+
+        for (var j = 0; j < a.Length; j++)
         {
-            int basicCol = model.BasicVariables[i];
-            if (basicCol >= 0 && basicCol < solution.Length)
-            {
-                newGrid[i + 1, rhsCol] = solution[basicCol];
-            }
+            var difference = a[j] - b[j];
+            total += difference * difference;
         }
 
-        // Update objective value
-        newGrid[0, rhsCol] = EvaluateObjective(solution);
+        return Math.Sqrt(total);
+    }
 
-        return newGrid;
+    private static void RecordStep(
+        SolveResult result, CanonicalMatrix model, double[] point, double[] weights,
+        int iteration, string title, string note)
+    {
+        // One row of the current point with the objective value alongside it, which is the
+        // useful thing to watch on a gradient method - there is no tableau to show.
+        var grid = new double[1, point.Length + 1];
+
+        for (var j = 0; j < point.Length; j++)
+            grid[0, j] = point[j];
+
+        grid[0, point.Length] = Evaluate(point, weights);
+
+        var labels = new List<string>();
+        for (var j = 0; j < point.Length; j++)
+            labels.Add("x" + (j + 1));
+
+        labels.Add("f(x)");
+
+        result.Iterations.Add(new Tableau(title, grid, new int[0], labels)
+        {
+            RowLabels = new List<string> { "point" },
+            Note = note
+        });
+    }
+
+    private static string Describe(double[] point, double[] weights, bool maximising, int iterations)
+    {
+        var parts = new List<string>();
+
+        for (var j = 0; j < point.Length; j++)
+            parts.Add($"x{j + 1} = {OutputWriter.Format(point[j])}");
+
+        var summary =
+            $"Projected gradient {(maximising ? "ascent" : "descent")} stopped after {iterations} " +
+            $"iterations at {string.Join(", ", parts.ToArray())}, " +
+            $"f(x) = {OutputWriter.Format(Evaluate(point, weights))}.";
+
+        return maximising
+            ? summary + " Maximising a convex objective has its optimum at a corner of the " +
+                        "feasible region, so this is a local optimum, not necessarily the global one."
+            : summary + " The objective is convex and the region is convex, so this is the " +
+                        "global minimum.";
     }
 }

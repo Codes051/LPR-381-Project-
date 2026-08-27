@@ -13,6 +13,7 @@ public class KnapsackBranchAndBoundSolver : ISolver
     public bool CanSolve(CanonicalMatrix model)
     {
         if (model == null ||
+            model.IsNonLinear ||
             model.ConstraintCount != 1 ||
             model.OriginalObjectiveType != ProblemType.Max)
         {

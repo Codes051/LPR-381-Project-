@@ -27,5 +27,15 @@ public class ParsedLP
     /// <summary>One entry per decision variable, in objective function order.</summary>
     public List<SignRestriction> Restrictions { get; }
 
+    /// <summary>
+    /// True when the objective is quadratic rather than linear.
+    /// </summary>
+    /// <remarks>
+    /// Set by the parser from a maxnl or minnl keyword. The objective coefficients then read
+    /// as the weights of a separable quadratic, f(x) = sum of c_j * x_j squared, instead of a
+    /// linear sum. The constraints stay linear either way.
+    /// </remarks>
+    public bool IsNonLinear { get; set; }
+
     public int DecisionVariableCount => ObjectiveCoefficients.Count;
 }

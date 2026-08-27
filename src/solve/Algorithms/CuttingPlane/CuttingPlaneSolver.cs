@@ -58,7 +58,8 @@ public class CuttingPlaneSolver : ISolver
 
     public string Name => "Cutting Plane Algorithm (Revised)";
 
-    public bool CanSolve(CanonicalMatrix model) => model != null && model.IsIntegerProblem;
+    public bool CanSolve(CanonicalMatrix model) =>
+        model != null && !model.IsNonLinear && model.IsIntegerProblem;
 
     public SolveResult Solve(CanonicalMatrix model)
     {

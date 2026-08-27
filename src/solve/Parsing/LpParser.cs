@@ -60,7 +60,8 @@ public class LpParser
 
         var objectiveLine = content[0];
         ProblemType objectiveType;
-        var objectiveCoefficients = ParseObjective(objectiveLine, out objectiveType);
+        bool nonLinear;
+        var objectiveCoefficients = ParseObjective(objectiveLine, out objectiveType, out nonLinear);
         var variableCount = objectiveCoefficients.Count;
 
         // The last line is always the restrictions, so everything between the objective and
@@ -72,21 +73,37 @@ public class LpParser
 
         var restrictions = ParseRestrictions(content[content.Count - 1], variableCount);
 
-        return new ParsedLP(objectiveType, objectiveCoefficients, constraints, restrictions);
+        return new ParsedLP(objectiveType, objectiveCoefficients, constraints, restrictions)
+        {
+            IsNonLinear = nonLinear
+        };
     }
 
-    private static List<double> ParseObjective(KeyValuePair<int, string> line, out ProblemType type)
+    /// <summary>
+    /// Reads the objective line and reports whether it declared a quadratic objective.
+    /// </summary>
+    /// <remarks>
+    /// <c>maxnl</c> and <c>minnl</c> keep the same shape as <c>max</c> and <c>min</c> - one
+    /// coefficient per decision variable - but the coefficients weight a separable quadratic,
+    /// f(x) = sum of c_j * x_j squared, rather than a linear sum. That is the smallest change
+    /// to the file format that lets a non-linear objective be written down at all, which the
+    /// bonus criterion needs and the linear format cannot express.
+    /// </remarks>
+    private static List<double> ParseObjective(
+        KeyValuePair<int, string> line, out ProblemType type, out bool nonLinear)
     {
         var lineNumber = line.Key;
         var words = Split(line.Value);
 
         switch (words[0].ToLowerInvariant())
         {
-            case "max": type = ProblemType.Max; break;
-            case "min": type = ProblemType.Min; break;
+            case "max": type = ProblemType.Max; nonLinear = false; break;
+            case "min": type = ProblemType.Min; nonLinear = false; break;
+            case "maxnl": type = ProblemType.Max; nonLinear = true; break;
+            case "minnl": type = ProblemType.Min; nonLinear = true; break;
             default:
                 throw new ParseException(lineNumber,
-                    $"the objective must start with max or min, found \"{words[0]}\".");
+                    $"the objective must start with max, min, maxnl or minnl, found \"{words[0]}\".");
         }
 
         if (words.Length < 2)

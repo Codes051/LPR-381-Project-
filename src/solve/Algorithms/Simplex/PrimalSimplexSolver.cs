@@ -48,7 +48,9 @@ public class PrimalSimplexSolver : ISolver
     {
         // Plain simplex solves the relaxation only. The menu refuses an integer or binary
         // model here and says so, which is part of the error handling criterion.
-        return model != null && !model.IsIntegerProblem;
+        // A quadratic objective cannot be expressed in row 0 of the grid, so the linear
+        // algorithms must decline it rather than silently optimise the wrong function.
+        return model != null && !model.IsNonLinear && !model.IsIntegerProblem;
     }
 
     public SolveResult Solve(CanonicalMatrix model)

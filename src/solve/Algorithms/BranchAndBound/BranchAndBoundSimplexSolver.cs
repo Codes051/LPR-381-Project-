@@ -14,7 +14,7 @@ public class BranchAndBoundSimplexSolver : ISolver
 
     public bool CanSolve(CanonicalMatrix model)
     {
-        return model != null && model.IsIntegerProblem;
+        return model != null && !model.IsNonLinear && model.IsIntegerProblem;
     }
 
     public SolveResult Solve(CanonicalMatrix model)

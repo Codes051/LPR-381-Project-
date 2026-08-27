@@ -58,6 +58,12 @@ public class CanonicalMatrix
     /// </summary>
     public VariableMapping[] VariableMap { get; set; }
 
+    /// <summary>
+    /// True when the objective is quadratic. The linear algorithms refuse such a model, since
+    /// row 0 of the grid cannot represent a quadratic objective.
+    /// </summary>
+    public bool IsNonLinear { get; set; }
+
     /// <summary>Whether the source model was a Min, so callers know to flip the objective back.</summary>
     public ProblemType OriginalObjectiveType { get; set; } = ProblemType.Max;
 
@@ -265,6 +271,7 @@ public class CanonicalMatrix
         return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
         {
             OriginalObjectiveType = OriginalObjectiveType,
+            IsNonLinear = IsNonLinear,
             ColumnTypes = types,
             // Existing variable columns keep their indices, so the map is still correct.
             VariableMap = VariableMap
@@ -286,6 +293,7 @@ public class CanonicalMatrix
         return new CanonicalMatrix(grid, basics, labels, intMask, binMask)
         {
             OriginalObjectiveType = OriginalObjectiveType,
+            IsNonLinear = IsNonLinear,
             ColumnTypes = ColumnTypes == null ? null : (VariableType[])ColumnTypes.Clone(),
             VariableMap = VariableMap
         };

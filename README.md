@@ -4,6 +4,9 @@ A menu-driven .NET console application that solves Linear and Integer Programmin
 displays every algorithm iteration, and performs sensitivity analysis on the optimal solution.
 
 Work split across the three of us: see [WORK_SPLIT.md](WORK_SPLIT.md).
+Recording the submission video: see [docs/demo-run-sheet.html](docs/demo-run-sheet.html) —
+open it in a browser. It gives the take order, the exact keys to press, and the number that
+should appear for every marked criterion.
 
 ## Prerequisites
 

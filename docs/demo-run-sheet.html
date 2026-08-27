@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LPR381 Demo Run Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:      #F5F7F4;
+    --surface:     #FFFFFF;
+    --surface-alt: #EDF1EC;
+    --ink:         #18211D;
+    --ink-soft:    #56635C;
+    --ink-faint:   #7D8A83;
+    --rule:        #D8DFD7;
+    --rule-strong: #B9C4BB;
+    --accent:      #2C6A5B;
+    --accent-soft: #E2EEE9;
+    --warn:        #9A5A0B;
+    --warn-soft:   #F7EBD9;
+    --term-bg:     #16201C;
+    --term-ink:    #D6E3DC;
+    --term-dim:    #8AA096;
+
+    --step: clamp(1rem, 0.6rem + 1.4vw, 1.35rem);
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101512;
+      --surface:     #18201C;
+      --surface-alt: #1E2823;
+      --ink:         #E6EDE8;
+      --ink-soft:    #A3B0A9;
+      --ink-faint:   #7B8A82;
+      --rule:        #2A3630;
+      --rule-strong: #3C4B43;
+      --accent:      #79C4AC;
+      --accent-soft: #1C2E28;
+      --warn:        #D69A48;
+      --warn-soft:   #2C2418;
+      --term-bg:     #0B100E;
+      --term-ink:    #CBDAD2;
+      --term-dim:    #74887E;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #101512;
+    --surface:     #18201C;
+    --surface-alt: #1E2823;
+    --ink:         #E6EDE8;
+    --ink-soft:    #A3B0A9;
+    --ink-faint:   #7B8A82;
+    --rule:        #2A3630;
+    --rule-strong: #3C4B43;
+    --accent:      #79C4AC;
+    --accent-soft: #1C2E28;
+    --warn:        #D69A48;
+    --warn-soft:   #2C2418;
+    --term-bg:     #0B100E;
+    --term-ink:    #CBDAD2;
+    --term-dim:    #74887E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: 1rem;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  h1, h2, h3, .label, .chip, .keys, .marks {
+    font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 1.3rem + 3vw, 3.1rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0;
+    max-width: var(--measure);
+    font-size: 1.08rem;
+    color: var(--ink-soft);
+  }
+
+  .tally {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 2px solid var(--rule-strong);
+    margin-top: 0.5rem;
+  }
+
+  .tally-item {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .tally-item b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- generic section ---------- */
+
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  /* Flex rather than a float on the note: a float overlaps the heading text once the
+     heading wraps, which it does on a narrow screen. */
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--rule-strong);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+  }
+
+  h2 .h2-note {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--ink-faint);
+    letter-spacing: 0;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+
+  /* ---------- setup list ---------- */
+
+  .setup { display: flex; flex-direction: column; gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
+
+  /* Normal inline flow, not grid or flex: the list items mix text nodes and inline
+     chips, and any layout mode here would make each of them a separate box. */
+  .setup li {
+    position: relative;
+    padding-left: 1.75rem;
+    max-width: var(--measure);
+  }
+
+  .setup li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.4rem;
+    width: 0.95rem;
+    height: 0.95rem;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: 3px;
+    background: var(--surface);
+  }
+
+  /* ---------- takes ---------- */
+
+  .takes { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .take {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 2px;
+    padding: 1.25rem 1.4rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .take-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.9rem;
+  }
+
+  .take-no {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+  }
+
+  h3 {
+    font-size: 1.18rem;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.005em;
+    flex: 1 1 14rem;
+  }
+
+  .marks {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.5rem;
+    border-radius: 2px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .marks.bonus { background: var(--warn-soft); color: var(--warn); }
+  .marks.video { background: var(--surface-alt); color: var(--ink-soft); }
+
+  .say { font-style: italic; color: var(--ink-soft); max-width: var(--measure); }
+
+  /* ---------- keystrokes ---------- */
+
+  .keyrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+  }
+
+  .keyrow .label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 0.35rem;
+    flex: 0 0 auto;
+  }
+
+  .keys {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500;
+    font-size: 0.88em;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    padding: 0.1rem 0.42rem;
+    /* Inline in prose a chip must be allowed to break, or a long command like
+       "dotnet build -c Release" overflows the column on a narrow screen. */
+    overflow-wrap: anywhere;
+  }
+
+  /* Inside a keystroke row the chips are discrete tokens and the row itself wraps
+     between them, so each one stays whole. */
+  .keyrow .keys { white-space: nowrap; overflow-wrap: normal; }
+
+  .sep { color: var(--ink-faint); }
+
+  /* ---------- expected output ---------- */
+
+  .out {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    padding: 0.85rem 1rem;
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+  }
+  .out .dim { color: var(--term-dim); }
+
+  /* ---------- trap callout ---------- */
+
+  .trap {
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    padding: 0.6rem 0.85rem;
+    border-radius: 2px;
+    font-size: 0.93rem;
+    max-width: var(--measure);
+  }
+  .trap b {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    color: var(--warn);
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- traps section ---------- */
+
+  .traplist { display: flex; flex-direction: column; gap: 1rem; margin: 0; padding: 0; list-style: none; }
+  .traplist li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--rule-strong);
+    max-width: var(--measure);
+  }
+  .traplist strong {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600;
+  }
+
+  /* ---------- coverage table ---------- */
+
+  .tablewrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 0.9rem;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 0 0.7rem 0.5rem 0;
+    border-bottom: 2px solid var(--rule-strong);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.55rem 0.7rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: baseline;
+  }
+
+  td.num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  tr.total td {
+    border-bottom: none;
+    border-top: 2px solid var(--rule-strong);
+    font-weight: 700;
+    padding-top: 0.7rem;
+  }
+
+  .foot {
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, li:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media print {
+    body { background: #fff; }
+    .take { break-inside: avoid; border-left-color: #333; }
+    .out { background: #f2f2f2; color: #111; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">LPR381 · Recording order</p>
+    <h1>Demo Run Sheet</h1>
+    <p class="standfirst">
+      The brief awards marks for the video, not the code: <em>“we are your client and will not be
+      marking your code.”</em> Everything below is already built and verified — this is the order to
+      film it in, the exact keys to press, and the numbers that should appear so you know a take is good.
+    </p>
+    <div class="tally">
+      <span class="tally-item"><b>11</b> takes</span>
+      <span class="tally-item"><b>100</b> marks covered</span>
+      <span class="tally-item"><b>+10</b> bonus</span>
+      <span class="tally-item"><b>117</b> automated checks passing</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Before you hit record</h2>
+    <ul class="setup">
+      <li>Build fresh: <span class="keys">dotnet build -c Release</span> — expect <b>0 Warning(s), 0 Error(s)</b>.</li>
+      <li>Run from <span class="keys">src/solve/bin/Release/net8.0</span> so the 13 sample models sit alongside <span class="keys">solve.exe</span> and every path below just works.</li>
+      <li>Widen the terminal to at least <b>170 columns</b>. The knapsack tableau is 143 characters and wraps into mush in a narrow window.</li>
+      <li>Have a text editor open on a second area of the screen for showing input and output files.</li>
+      <li>Type the menu numbers slowly enough to be readable. The marker is ticking criteria off a list.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The takes<span class="h2-note">rubric order</span></h2>
+
+    <div class="takes">
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 00</span>
+          <h3>State the outline</h3>
+          <span class="marks video">Outline · 2</span>
+        </div>
+        <p class="say">“This program solves Linear and Integer Programming models. I’ll show the input
+          format, then each of the five algorithms, then sensitivity analysis and duality, then error
+          handling, and finish with the non-linear bonus.”</p>
+        <p>Say it once, in that order, and then follow it. The 2 marks are for the video having a
+          structure the marker can follow — not for anything in the code.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 01</span>
+          <h3>Input file format</h3>
+          <span class="marks">Input File · 3</span>
+        </div>
+        <p>Open <span class="keys">samples/lp_max.txt</span> in the editor first. Read the three parts
+          aloud: objective line, one line per constraint, sign restrictions last.</p>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/lp_max.txt</span>
+        </div>
+        <div class="out">Loaded 2 variables, 3 constraints.</div>
+        <p>Then open <span class="keys">samples/t_urs.txt</span> and <span class="keys">samples/t_negative.txt</span>
+          in the editor to show that all five restrictions — <span class="keys">+ - urs int bin</span> —
+          are supported, not just <span class="keys">+</span>.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 02</span>
+          <h3>Primal Simplex, and the output file</h3>
+          <span class="marks">Primal · 4 + Output · 2</span>
+        </div>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span>
+          <span class="keys">4</span><span class="sep">›</span><span class="keys">out_primal.txt</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 180.000</div>
+        <p>Now open <span class="keys">out_primal.txt</span> in the editor and scroll it slowly. This
+          single file earns the Output File marks: canonical form at the top, then every tableau
+          iteration with the pivot column marked <span class="keys">*</span> and the pivot row marked
+          <span class="keys">&gt;</span>, then the result. Point out that every value is to three
+          decimals, as the brief requires.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 03</span>
+          <h3>Revised Primal Simplex</h3>
+          <span class="marks">Revised · 4</span>
+        </div>
+        <p>Use the mixed model so the two-phase machinery is visible.</p>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/lp_min_mixed.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">2</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 3.400</div>
+        <p>Export it and scroll the file. The criterion asks specifically for <b>Product Form and Price
+          Out iterations</b> — they are labelled exactly that, through Phase 1 and Phase 2. Say the
+          words as you scroll past them.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 04</span>
+          <h3>Branch &amp; Bound Simplex</h3>
+          <span class="marks">B&amp;B Simplex · 20</span>
+        </div>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/knapsack_ip.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">3</span><span class="sep">›</span>
+          <span class="keys">4</span><span class="sep">›</span><span class="keys">out_bnb.txt</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 15.000</div>
+        <p>The heaviest single item on the sheet, and it is marked on the <em>displayed working</em>.
+          In the output file, point at each of the four things by name: the sub-problem tables, a node
+          being <b>fathomed</b>, a <b>backtrack</b> back to a parent, and the <b>best candidate</b> at
+          the end.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 05</span>
+          <h3>Branch &amp; Bound Knapsack</h3>
+          <span class="marks">Knapsack · 16</span>
+        </div>
+        <p>Same file, different algorithm — a strong moment on camera.</p>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">5</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 15.000</div>
+        <p class="say">“Two independent algorithms, same model, same answer.”</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 06</span>
+          <h3>Cutting Plane</h3>
+          <span class="marks">Cutting Plane · 14</span>
+        </div>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/ip_integer.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">4</span><span class="sep">›</span>
+          <span class="keys">4</span><span class="sep">›</span><span class="keys">out_cut.txt</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 20.000</div>
+        <p>In the file, find <b>Gomory Cut 1</b>. The note underneath names the source row and explains
+          why the cut is valid. Read it out — it shows the algorithm is doing real work rather than
+          calling a library.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 07</span>
+          <h3>Sensitivity Analysis · part one</h3>
+          <span class="marks">Sensitivity · 25</span>
+        </div>
+        <p>The largest item on the sheet. Load <span class="keys">lp_max.txt</span>, solve with primal
+          simplex, then enter the sensitivity menu and work down it.</p>
+        <div class="keyrow"><span class="label">Setup</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/lp_max.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span><span class="keys">3</span>
+        </div>
+        <div class="keyrow"><span class="label">Range of basic</span>
+          <span class="keys">3</span><span class="sep">›</span><span class="keys">0</span>
+        </div>
+        <div class="out">=== Range for Objective coefficient of x1 ===
+Current value: 3.000
+Lower bound:   2.000
+Upper bound:   4.000</div>
+        <div class="keyrow"><span class="label">Change basic</span>
+          <span class="keys">4</span><span class="sep">›</span><span class="keys">0</span><span class="sep">›</span><span class="keys">3.5</span>
+        </div>
+        <div class="keyrow"><span class="label">Range of RHS</span>
+          <span class="keys">5</span><span class="sep">›</span><span class="keys">1</span>
+        </div>
+        <div class="out">Lower bound:   80.000
+Upper bound:   120.000</div>
+        <div class="keyrow"><span class="label">Change RHS</span>
+          <span class="keys">6</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span><span class="keys">120</span>
+        </div>
+        <div class="out">Objective value: 200.000
+  x1 = 40.000
+  x2 = 40.000</div>
+        <div class="keyrow"><span class="label">Add activity</span>
+          <span class="keys">9</span><span class="sep">›</span><span class="keys">4</span><span class="sep">›</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span><span class="keys">0</span>
+        </div>
+        <div class="out">Objective value: 320.000</div>
+        <div class="keyrow"><span class="label">Add constraint</span>
+          <span class="keys">10</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span><span class="keys">0</span><span class="sep">›</span>
+          <span class="keys">&lt;=</span><span class="sep">›</span><span class="keys">15</span>
+        </div>
+        <div class="out">Objective value: 175.000</div>
+        <div class="keyrow"><span class="label">Shadow prices</span><span class="keys">11</span></div>
+        <div class="out">Constraint 1: 1.000
+Constraint 2: 1.000
+Constraint 3: 0.000</div>
+        <p class="say">“Constraint 3 is not binding, so its shadow price is zero — one more unit of it
+          is worth nothing.”</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 08</span>
+          <h3>Sensitivity Analysis · part two, and duality</h3>
+          <span class="marks">Sensitivity · 25</span>
+        </div>
+        <p>Four operations need a <b>non-basic decision variable</b>, and <span class="keys">lp_max</span>
+          has none — both its variables are basic. Switch models, or these four will error on camera.</p>
+        <div class="trap"><b>Switch to lp_max_4var first.</b> On that model x1 is non-basic and column
+          index <span class="keys">0</span> is valid for options 1, 2, 7 and 8.</div>
+        <div class="keyrow"><span class="label">Setup</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/lp_max_4var.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span><span class="keys">3</span>
+        </div>
+        <div class="keyrow"><span class="label">Range of non-basic</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">0</span>
+        </div>
+        <div class="out">=== Range for Objective coefficient of x1 ===
+Current value: 3.000
+Lower bound:   -∞
+Upper bound:   3.308</div>
+        <div class="keyrow"><span class="label">Change non-basic</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">0</span><span class="sep">›</span><span class="keys">2.5</span>
+        </div>
+        <div class="keyrow"><span class="label">Range in column</span>
+          <span class="keys">7</span><span class="sep">›</span><span class="keys">0</span><span class="sep">›</span><span class="keys">1</span>
+        </div>
+        <div class="out">=== Range for Coefficient of x1 in constraint 1 ===
+Current value: 2.000
+Lower bound:   1.714
+Upper bound:   +∞</div>
+        <div class="keyrow"><span class="label">Change in column</span>
+          <span class="keys">8</span><span class="sep">›</span><span class="keys">0</span><span class="sep">›</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">1.5</span>
+        </div>
+        <p>Now duality. Load <span class="keys">lp_min_5con.txt</span>, solve, and pick option 12 — a
+          Min model with all three relation types is the convincing case.</p>
+        <div class="keyrow"><span class="label">Duality</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/lp_min_5con.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span><span class="sep">›</span>
+          <span class="keys">3</span><span class="sep">›</span><span class="keys">12</span>
+        </div>
+        <div class="out"><span class="dim">Primal objective ....... </span>22.000
+<span class="dim">Dual objective ......... </span>22.000
+Strong duality</div>
+        <p class="say">“The dual reaches the same value, so this is strong duality — the criterion asks
+          for all three: build the dual, solve it, and verify which kind it is.”</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 09</span>
+          <h3>Error handling and special cases</h3>
+          <span class="marks">Error Handling · 5</span>
+        </div>
+        <p>Five short beats. The point is that nothing crashes — every failure is a sentence the user
+          can act on.</p>
+        <div class="keyrow"><span class="label">Unbounded</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/unbounded.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span>
+        </div>
+        <div class="out">Status: Unbounded</div>
+        <div class="keyrow"><span class="label">Infeasible</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/infeasible.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span>
+        </div>
+        <div class="out">Status: Infeasible</div>
+        <div class="keyrow"><span class="label">Wrong algorithm</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/knapsack_ip.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">1</span>
+        </div>
+        <div class="out">Error: Primal Simplex Algorithm cannot solve this model.</div>
+        <div class="keyrow"><span class="label">Missing file</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">nope.txt</span>
+        </div>
+        <div class="out">Error: Input file not found: nope.txt</div>
+        <p>Finally, edit a sample in the editor — change <span class="keys">max</span> to
+          <span class="keys">maximize</span>, save, and load it:</p>
+        <div class="out">Error: Input file error on line 1: the objective must start with
+max, min, maxnl or minnl, found "maximize".</div>
+        <p class="say">“It names the line and what was wrong with it.”</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 10</span>
+          <h3>Non-linear bonus — explain the code</h3>
+          <span class="marks bonus">Bonus · +10</span>
+        </div>
+        <div class="trap"><b>This is the one part where the brief asks you to explain the code.</b>
+          Everywhere else you show the program working; here you also open the file.</div>
+        <p>Show <span class="keys">samples/nl_circle.txt</span> first and explain the format: the
+          <span class="keys">minnl</span> keyword means the coefficients weight <em>squares</em>, so
+          this is minimise x₁² + x₂² subject to x₁ + x₂ ≥ 4.</p>
+        <div class="keyrow"><span class="label">Keys</span>
+          <span class="keys">1</span><span class="sep">›</span><span class="keys">samples/nl_circle.txt</span><span class="sep">›</span>
+          <span class="keys">2</span><span class="sep">›</span><span class="keys">6</span>
+        </div>
+        <div class="out">Status: Optimal
+Objective: 8.000
+  x1 = 2.000
+  x2 = 2.000</div>
+        <p class="say">“The nearest point on that line to the origin is (2,2), so 8 is right — you can
+          check it in your head.”</p>
+        <p>Then open <span class="keys">NonLinearSolver.cs</span> and walk the three steps in the
+          comment block: take the gradient, step along it, project back onto the feasible region.
+          Emphasise the projection — there is no closed form for the nearest feasible point, but
+          projecting onto one constraint at a time and cycling converges to their intersection.</p>
+        <p>Close with <span class="keys">samples/nl_weighted.txt</span> → <b>7.200</b> at (2.4, 0.6),
+          which is what Lagrange multipliers give by hand.</p>
+      </article>
+
+      <article class="take">
+        <div class="take-head">
+          <span class="take-no">TAKE 11</span>
+          <h3>Any number of variables and constraints</h3>
+          <span class="marks">Criteria · minimum requirements</span>
+        </div>
+        <p>The brief opens with “accept a random amount of decision variables / constraints”. Close the
+          video by loading the two widest models back to back so it is obvious nothing is hardcoded to
+          two variables.</p>
+        <div class="keyrow"><span class="label">4 vars</span>
+          <span class="keys">samples/lp_max_4var.txt</span><span class="sep">›</span><span class="keys">113.846</span>
+        </div>
+        <div class="keyrow"><span class="label">5 constraints</span>
+          <span class="keys">samples/lp_min_5con.txt</span><span class="sep">›</span><span class="keys">22.000</span>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Five things that will bite on camera</h2>
+    <ul class="traplist">
+      <li>
+        <strong>Column prompts are 0-based; constraint prompts are 1-based.</strong>
+        <span>Options 1–4 and 7–8 ask for a grid <em>column index</em>, so x1 is <span class="keys">0</span>.
+        Options 5–6 ask for a <em>constraint number</em>, so the first constraint is <span class="keys">1</span>.
+        Mixing them up changes the wrong thing and the output looks wrong when it isn’t.</span>
+      </li>
+      <li>
+        <strong>Options 1, 2, 7 and 8 error on lp_max.</strong>
+        <span>Both its decision variables are basic, so there is no valid non-basic input. Use
+        <span class="keys">lp_max_4var.txt</span> for those four, as Take 08 does.</span>
+      </li>
+      <li>
+        <strong>Demo <span class="keys">minnl</span>, not <span class="keys">maxnl</span>.</strong>
+        <span>Minimising a convex objective has one answer and the program reports it as global.
+        Maximising one puts the optimum at a corner, so the program honestly reports a <em>local</em>
+        optimum — accurate, but a confusing thing to explain on video.</span>
+      </li>
+      <li>
+        <strong>The knapsack tableau is 143 characters wide.</strong>
+        <span>Widen the terminal before recording, or that section is unreadable and the marker cannot
+        tick off the iterations they are supposed to see.</span>
+      </li>
+      <li>
+        <strong>One error message still says “SolveResult is null”.</strong>
+        <span>It appears if you open sensitivity analysis before solving anything. Solve first and it
+        never shows.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Coverage check<span class="h2-note">tick as you record</span></h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Criterion</th><th>Marks</th><th>Take</th><th>Model</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Outline</td><td class="num">2</td><td class="num">00</td><td>—</td></tr>
+          <tr><td>Input File</td><td class="num">3</td><td class="num">01</td><td>lp_max, t_urs, t_negative</td></tr>
+          <tr><td>Output File</td><td class="num">2</td><td class="num">02</td><td>lp_max</td></tr>
+          <tr><td>Primal Simplex</td><td class="num">4</td><td class="num">02</td><td>lp_max</td></tr>
+          <tr><td>Revised Primal Simplex</td><td class="num">4</td><td class="num">03</td><td>lp_min_mixed</td></tr>
+          <tr><td>Branch &amp; Bound Simplex</td><td class="num">20</td><td class="num">04</td><td>knapsack_ip</td></tr>
+          <tr><td>Branch &amp; Bound Knapsack</td><td class="num">16</td><td class="num">05</td><td>knapsack_ip</td></tr>
+          <tr><td>Cutting Plane</td><td class="num">14</td><td class="num">06</td><td>ip_integer</td></tr>
+          <tr><td>Sensitivity Analysis</td><td class="num">25</td><td class="num">07–08</td><td>lp_max, lp_max_4var, lp_min_5con</td></tr>
+          <tr><td>Error Handling</td><td class="num">5</td><td class="num">09</td><td>unbounded, infeasible, knapsack_ip</td></tr>
+          <tr><td>Interface presentation</td><td class="num">5</td><td class="num">all</td><td>—</td></tr>
+          <tr class="total"><td>Total</td><td class="num">100</td><td></td><td></td></tr>
+          <tr><td>Non-linear problem solved</td><td class="num">+10</td><td class="num">10</td><td>nl_circle, nl_weighted</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">
+    Every number quoted above was produced by <span class="keys">solve.exe</span> built in Release from
+    the current <span class="keys">main</span>, and cross-checked against independent ground truth —
+    brute-force enumeration for the linear and integer models, closed-form answers for the non-linear
+    ones. If a take produces a different number, something has changed since this sheet was written.
+  </p>
+
+</div>
+</body>
+</html>

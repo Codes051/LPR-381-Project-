@@ -222,55 +222,24 @@ public class SensitivityAnalyzer
     {
         ValidateColumn(column);
 
-        int basicRow = FindBasicRow(column);
-        if (basicRow != -1)
-            throw new LpException($"Column {column} is a basic variable. Use RangeOfBasicVariable instead.");
+        if (FindBasicRow(column) != -1)
+            throw new LpException($"{ColumnName(column)} is basic. Use RangeOfBasicVariable instead.");
 
-        var grid = _optimal.Grid;
-        double reducedCost = grid[0, column];
-        double currentValue = 0; // Non-basic variables have value 0
+        var variable = RangeableVariable(column);
+        var current = RequireModel("A coefficient range").ObjectiveCoefficients[variable];
 
-        // For non-basic variables, the range is determined by the reduced cost
-        // and the coefficients in the tableau
-        double lower = double.NegativeInfinity;
-        double upper = double.PositiveInfinity;
+        // The basis stays optimal while every reduced cost stays non-negative. Raising the
+        // objective coefficient of a NON-BASIC column lowers only its own reduced cost, one
+        // for one, so the slack available is exactly that reduced cost. Lowering it can never
+        // make the column attractive, so that direction is unbounded.
+        var slack = _optimal.Grid[0, column];
 
-        // Check each constraint row
-        for (int i = 1; i < _optimal.RowCount; i++)
-        {
-            double coeff = grid[i, column];
-            double rhs = grid[i, _optimal.RhsColumn];
-            double basicValue = rhs;
-
-            if (coeff > 0)
-            {
-                // upper bound: basicValue / coeff (for maximization)
-                double bound = basicValue / coeff;
-                if (bound < upper)
-                    upper = bound;
-            }
-            else if (coeff < 0)
-            {
-                // lower bound: basicValue / coeff (for maximization)
-                double bound = basicValue / coeff;
-                if (bound > lower)
-                    lower = bound;
-            }
-        }
-
-        // For minimization, the signs flip
-        if (_optimal.OriginalObjectiveType == ProblemType.Min)
-        {
-            double temp = lower;
-            lower = -upper;
-            upper = -temp;
-        }
-
-        string subject = GetColumnName(column);
-        return new SensitivityRange(subject,
-            lower == double.NegativeInfinity ? double.NegativeInfinity : Math.Round(lower, 6),
-            upper == double.PositiveInfinity ? double.PositiveInfinity : Math.Round(upper, 6),
-            currentValue);
+        return _optimal.OriginalObjectiveType == ProblemType.Max
+            ? new SensitivityRange(CoefficientSubject(variable), double.NegativeInfinity,
+                                   Math.Round(current + slack, 6), Math.Round(current, 6))
+            // A Min model was normalised by negating the objective, so the direction flips.
+            : new SensitivityRange(CoefficientSubject(variable), Math.Round(current - slack, 6),
+                                   double.PositiveInfinity, Math.Round(current, 6));
     }
 
     /// <summary>
@@ -296,66 +265,63 @@ public class SensitivityAnalyzer
     {
         ValidateColumn(column);
 
-        int basicRow = FindBasicRow(column);
+        var basicRow = FindBasicRow(column);
         if (basicRow == -1)
-            throw new LpException($"Column {column} is not a basic variable. Use RangeOfNonBasicVariable instead.");
+            throw new LpException($"{ColumnName(column)} is not basic. Use RangeOfNonBasicVariable instead.");
 
+        var variable = RangeableVariable(column);
+        var current = RequireModel("A coefficient range").ObjectiveCoefficients[variable];
         var grid = _optimal.Grid;
-        double currentValue = grid[basicRow, _optimal.RhsColumn];
 
-        // For basic variables, the range is determined by the ratio test
-        // using the inverse of the basis
-        double lower = double.NegativeInfinity;
-        double upper = double.PositiveInfinity;
+        // Changing the cost of a BASIC variable moves the reduced cost of every non-basic
+        // column, each by the entry of this variable row in that column. The basis survives
+        // while all of them stay non-negative, so each non-basic column contributes one limit.
+        var lowerDelta = double.NegativeInfinity;
+        var upperDelta = double.PositiveInfinity;
 
-        // Check all non-basic variables
-        for (int j = 0; j < _numColumns; j++)
+        for (var j = 0; j < _numColumns; j++)
         {
-            if (j == column) continue;
-            int testRow = FindBasicRow(j);
-            if (testRow != -1) continue; // Skip other basic variables
+            if (j == column || FindBasicRow(j) != -1)
+                continue;
 
-            double coeff = grid[basicRow, j];
-            double reducedCost = grid[0, j];
+            var rate = grid[basicRow, j];
+            var reduced = grid[0, j];
 
-            if (coeff > 0)
+            if (rate > 1e-9)
             {
-                // For maximization
-                if (_optimal.OriginalObjectiveType == ProblemType.Max)
-                {
-                    double bound = currentValue / coeff;
-                    if (bound < upper)
-                        upper = bound;
-                }
-                else // Minimization
-                {
-                    double bound = currentValue / coeff;
-                    if (bound > lower)
-                        lower = bound;
-                }
+                var limit = -reduced / rate;
+                if (limit > lowerDelta)
+                    lowerDelta = limit;
             }
-            else if (coeff < 0)
+            else if (rate < -1e-9)
             {
-                if (_optimal.OriginalObjectiveType == ProblemType.Max)
-                {
-                    double bound = currentValue / coeff;
-                    if (bound > lower)
-                        lower = bound;
-                }
-                else // Minimization
-                {
-                    double bound = currentValue / coeff;
-                    if (bound < upper)
-                        upper = bound;
-                }
+                var limit = -reduced / rate;
+                if (limit < upperDelta)
+                    upperDelta = limit;
             }
         }
 
-        string subject = GetColumnName(column);
-        return new SensitivityRange(subject,
-            lower == double.NegativeInfinity ? double.NegativeInfinity : Math.Round(lower, 6),
-            upper == double.PositiveInfinity ? double.PositiveInfinity : Math.Round(upper, 6),
-            Math.Round(currentValue, 6));
+        // The deltas are in the internally normalised maximisation. A Min model had its
+        // objective negated, so the interval has to be reflected before it is reported.
+        double lower;
+        double upper;
+
+        if (_optimal.OriginalObjectiveType == ProblemType.Max)
+        {
+            lower = double.IsNegativeInfinity(lowerDelta) ? double.NegativeInfinity : current + lowerDelta;
+            upper = double.IsPositiveInfinity(upperDelta) ? double.PositiveInfinity : current + upperDelta;
+        }
+        else
+        {
+            lower = double.IsPositiveInfinity(upperDelta) ? double.NegativeInfinity : current - upperDelta;
+            upper = double.IsNegativeInfinity(lowerDelta) ? double.PositiveInfinity : current - lowerDelta;
+        }
+
+        return new SensitivityRange(
+            CoefficientSubject(variable),
+            double.IsInfinity(lower) ? lower : Math.Round(lower, 6),
+            double.IsInfinity(upper) ? upper : Math.Round(upper, 6),
+            Math.Round(current, 6));
     }
 
     /// <summary>
@@ -490,31 +456,79 @@ public class SensitivityAnalyzer
         ValidateColumn(column);
         ValidateConstraintRow(constraintRow);
 
-        int basicRow = FindBasicRow(column);
-        if (basicRow != -1)
-            throw new LpException($"Column {column} is a basic variable. Coefficient range is only defined for non-basic variables.");
+        if (FindBasicRow(column) != -1)
+        {
+            throw new LpException(
+                $"{ColumnName(column)} is basic. This range is only defined for a coefficient " +
+                "inside a non-basic column.");
+        }
 
-        var grid = _optimal.Grid;
-        int tableauRow = constraintRow + 1;
-        double currentCoeff = grid[tableauRow, column];
+        var variable = RangeableVariable(column);
+        var current = RequireModel("A coefficient range").Constraints[constraintRow].Coefficients[variable];
 
-        // The range is determined by the optimality conditions
-        // For a non-basic variable, the coefficient can vary within a range
-        // that keeps the reduced cost sign unchanged
+        // A non-basic column is not part of the basis, so changing an entry in it leaves B and
+        // therefore the simplex multipliers untouched. Only this column reduced cost moves,
+        // by the dual value of that row for every unit the coefficient changes.
+        var dual = InternalDualValue(constraintRow);
+        var reduced = _optimal.Grid[0, column];
 
-        double lower = double.NegativeInfinity;
-        double upper = double.PositiveInfinity;
-        lower = currentCoeff - Math.Abs(currentCoeff) * 2;
-        upper = currentCoeff + Math.Abs(currentCoeff) * 2;
+        if (Math.Abs(dual) < 1e-9)
+        {
+            // The row is not binding, so this coefficient does not affect optimality at all.
+            return new SensitivityRange(
+                $"Coefficient of x{variable + 1} in constraint {constraintRow + 1}",
+                double.NegativeInfinity, double.PositiveInfinity, Math.Round(current, 6));
+        }
 
-        if (lower < -1e10) lower = double.NegativeInfinity;
-        if (upper > 1e10) upper = double.PositiveInfinity;
+        var limit = current - reduced / dual;
 
-        string subject = $"Coefficient of {GetColumnName(column)} in constraint {constraintRow + 1}";
-        return new SensitivityRange(subject,
-            lower == double.NegativeInfinity ? double.NegativeInfinity : Math.Round(lower, 6),
-            upper == double.PositiveInfinity ? double.PositiveInfinity : Math.Round(upper, 6),
-            Math.Round(currentCoeff, 6));
+        return dual > 0
+            ? new SensitivityRange($"Coefficient of x{variable + 1} in constraint {constraintRow + 1}",
+                                   Math.Round(limit, 6), double.PositiveInfinity, Math.Round(current, 6))
+            : new SensitivityRange($"Coefficient of x{variable + 1} in constraint {constraintRow + 1}",
+                                   double.NegativeInfinity, Math.Round(limit, 6), Math.Round(current, 6));
+    }
+
+    /// <summary>
+    /// The variable behind a column, rejecting the cases where one coefficient spans two
+    /// columns and the single-column reasoning above would not hold.
+    /// </summary>
+    private int RangeableVariable(int column)
+    {
+        var variable = VariableIndexForColumn(column);
+        var map = _optimal.VariableMap;
+
+        if (map != null && variable < map.Length && map[variable].NegativeColumn >= 0)
+        {
+            throw new LpException(
+                $"x{variable + 1} is unrestricted and is split across two columns, so its " +
+                "coefficient cannot be ranged one column at a time.");
+        }
+
+        return variable;
+    }
+
+    private string CoefficientSubject(int variable) => $"Objective coefficient of x{variable + 1}";
+
+    /// <summary>
+    /// The dual value of a row in the internally normalised maximisation, without the flip
+    /// that <see cref="ShadowPrices"/> applies before showing it to the user.
+    /// </summary>
+    private double InternalDualValue(int constraintRow)
+    {
+        var sign = 1.0;
+        var column = FindColumnByLabel("s" + (constraintRow + 1));
+
+        if (column < 0)
+            column = FindColumnByLabel("a" + (constraintRow + 1));
+
+        if (column < 0)
+        {
+            column = FindColumnByLabel("e" + (constraintRow + 1));
+            sign = -1.0;
+        }
+
+        return column < 0 ? 0.0 : sign * _optimal.Grid[0, column];
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Drawing;
 using System.Windows.Forms;
 using Solve.Algorithms;
@@ -561,9 +562,26 @@ public class MainForm : Form
         _ => Relation.LEQ
     };
 
+    /// <summary>
+    /// Reads a number, accepting either decimal separator.
+    /// </summary>
+    /// <remarks>
+    /// Everything this program displays uses a point, because the tableaus and the input files
+    /// do. Parsing with the machine culture alone would reject "2.5" on a machine set to a
+    /// comma decimal separator - so the user reads 2.500 on screen, types it back, and is told
+    /// it is not a number. Invariant is tried first, then the local culture, so both work.
+    /// </remarks>
+    private static bool TryReadNumber(string text, out double value)
+    {
+        text = (text ?? string.Empty).Trim();
+
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+               || double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+    }
+
     private static double Number(TextBox box, string what)
     {
-        if (!double.TryParse(box.Text.Trim(), out var value))
+        if (!TryReadNumber(box.Text, out var value))
             throw new LpException($"Enter a number for the {what}.");
 
         return value;
@@ -571,16 +589,19 @@ public class MainForm : Form
 
     private static double[] Numbers(TextBox box, int expected, string per)
     {
+        // Split on commas and spaces only. A comma is also a decimal separator in some
+        // locales, but a list of coefficients is written with points here, matching the
+        // input file format shown everywhere else.
         var parts = box.Text.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
         var values = new double[expected];
 
         if (parts.Length != expected)
-            throw new LpException($"Enter {expected} comma separated numbers, one per {per}.");
+            throw new LpException($"Enter {expected} numbers separated by commas, one per {per}.");
 
         for (var i = 0; i < expected; i++)
         {
-            if (!double.TryParse(parts[i].Trim(), out values[i]))
-                throw new LpException($"\"{parts[i]}\" is not a number.");
+            if (!TryReadNumber(parts[i], out values[i]))
+                throw new LpException($"\"{parts[i].Trim()}\" is not a number.");
         }
 
         return values;
@@ -673,6 +694,23 @@ public class MainForm : Form
         }
     }
 
-    private void Report(string message, string title = "LPR381 Solver") =>
+    /// <summary>
+    /// Where user-facing messages go. Left null in normal use, when they become message boxes.
+    /// </summary>
+    /// <remarks>
+    /// A test can set this to collect messages instead, which is the only way to drive the
+    /// window unattended - a modal box has no one to dismiss it and would hang the run.
+    /// </remarks>
+    internal Action<string> OnReport { get; set; }
+
+    private void Report(string message, string title = "LPR381 Solver")
+    {
+        if (OnReport != null)
+        {
+            OnReport(message);
+            return;
+        }
+
         MessageBox.Show(this, message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
 }

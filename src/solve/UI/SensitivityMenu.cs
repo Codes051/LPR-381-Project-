@@ -1,3 +1,4 @@
+using System.Globalization;
 using Solve.Exceptions;
 using Solve.Models;
 using Solve.Sensitivity;
@@ -114,6 +115,24 @@ public class SensitivityMenu
         }
     }
 
+
+    /// <summary>
+    /// Reads a number typed at a prompt, accepting either decimal separator.
+    /// </summary>
+    /// <remarks>
+    /// Every number this program prints uses a point, because the tableaus and the input files
+    /// do. Parsing with the machine culture alone rejects "2.5" on a machine configured for a
+    /// comma decimal separator, so the user reads 2.500 on screen, types it back, and is told
+    /// it is invalid. Invariant is tried first, then the local culture, so both are accepted.
+    /// </remarks>
+    private static bool TryReadNumber(string text, out double value)
+    {
+        text = (text ?? string.Empty).Trim();
+
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+               || double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+    }
+
     private void HandleRangeOfNonBasicVariable()
     {
         Console.Write("Enter column index of non-basic variable: ");
@@ -137,7 +156,7 @@ public class SensitivityMenu
         }
 
         Console.Write("Enter new value: ");
-        if (!double.TryParse(Console.ReadLine(), out double newValue))
+        if (!TryReadNumber(Console.ReadLine(), out double newValue))
         {
             Console.WriteLine("Invalid value.");
             return;
@@ -170,7 +189,7 @@ public class SensitivityMenu
         }
 
         Console.Write("Enter new value: ");
-        if (!double.TryParse(Console.ReadLine(), out double newValue))
+        if (!TryReadNumber(Console.ReadLine(), out double newValue))
         {
             Console.WriteLine("Invalid value.");
             return;
@@ -213,7 +232,7 @@ public class SensitivityMenu
         int constraintRow = constraintNumber - 1;
 
         Console.Write("Enter new RHS value: ");
-        if (!double.TryParse(Console.ReadLine(), out double newValue))
+        if (!TryReadNumber(Console.ReadLine(), out double newValue))
         {
             Console.WriteLine("Invalid value.");
             return;
@@ -270,7 +289,7 @@ public class SensitivityMenu
         int constraintRow = constraintNumber - 1;
 
         Console.Write("Enter new coefficient value: ");
-        if (!double.TryParse(Console.ReadLine(), out double newValue))
+        if (!TryReadNumber(Console.ReadLine(), out double newValue))
         {
             Console.WriteLine("Invalid value.");
             return;
@@ -289,7 +308,7 @@ public class SensitivityMenu
         }
 
         Console.Write("Enter objective coefficient for new variable: ");
-        if (!double.TryParse(Console.ReadLine(), out double objCoeff))
+        if (!TryReadNumber(Console.ReadLine(), out double objCoeff))
         {
             Console.WriteLine("Invalid coefficient.");
             return;
@@ -301,7 +320,7 @@ public class SensitivityMenu
         for (int i = 0; i < numConstraints; i++)
         {
             Console.Write($"Enter coefficient for constraint {i + 1}: ");
-            if (!double.TryParse(Console.ReadLine(), out constraintCoeffs[i]))
+            if (!TryReadNumber(Console.ReadLine(), out constraintCoeffs[i]))
             {
                 Console.WriteLine("Invalid coefficient.");
                 return;
@@ -326,7 +345,7 @@ public class SensitivityMenu
         for (int i = 0; i < numVars; i++)
         {
             Console.Write($"Enter coefficient for variable {i + 1}: ");
-            if (!double.TryParse(Console.ReadLine(), out coeffs[i]))
+            if (!TryReadNumber(Console.ReadLine(), out coeffs[i]))
             {
                 Console.WriteLine("Invalid coefficient.");
                 return;
@@ -347,7 +366,7 @@ public class SensitivityMenu
         }
 
         Console.Write("Enter RHS value: ");
-        if (!double.TryParse(Console.ReadLine(), out double rhs))
+        if (!TryReadNumber(Console.ReadLine(), out double rhs))
         {
             Console.WriteLine("Invalid RHS.");
             return;

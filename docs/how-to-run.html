@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running LPR381</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:      #F5F7F4;
+    --surface:     #FFFFFF;
+    --surface-alt: #EDF1EC;
+    --ink:         #18211D;
+    --ink-soft:    #56635C;
+    --ink-faint:   #7D8A83;
+    --rule:        #D8DFD7;
+    --rule-strong: #B9C4BB;
+    --accent:      #2C6A5B;
+    --accent-soft: #E2EEE9;
+    --warn:        #9A5A0B;
+    --warn-soft:   #F7EBD9;
+    --term-bg:     #16201C;
+    --term-ink:    #D6E3DC;
+    --term-dim:    #8AA096;
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101512;
+      --surface:     #18201C;
+      --surface-alt: #1E2823;
+      --ink:         #E6EDE8;
+      --ink-soft:    #A3B0A9;
+      --ink-faint:   #7B8A82;
+      --rule:        #2A3630;
+      --rule-strong: #3C4B43;
+      --accent:      #79C4AC;
+      --accent-soft: #1C2E28;
+      --warn:        #D69A48;
+      --warn-soft:   #2C2418;
+      --term-bg:     #0B100E;
+      --term-ink:    #CBDAD2;
+      --term-dim:    #74887E;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #101512;
+    --surface:     #18201C;
+    --surface-alt: #1E2823;
+    --ink:         #E6EDE8;
+    --ink-soft:    #A3B0A9;
+    --ink-faint:   #7B8A82;
+    --rule:        #2A3630;
+    --rule-strong: #3C4B43;
+    --accent:      #79C4AC;
+    --accent-soft: #1C2E28;
+    --warn:        #D69A48;
+    --warn-soft:   #2C2418;
+    --term-bg:     #0B100E;
+    --term-ink:    #CBDAD2;
+    --term-dim:    #74887E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Serif", Georgia, serif;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  h1, h2, h3, .kicker, .cmd, .chip {
+    font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .kicker {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 1.2rem + 3vw, 2.9rem);
+    font-weight: 700;
+    line-height: 1.06;
+    letter-spacing: -0.015em;
+    margin: 0.5rem 0 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0.75rem 0 0;
+    max-width: var(--measure);
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+  }
+
+  section { display: flex; flex-direction: column; gap: 1rem; }
+
+  h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0;
+    padding-bottom: 0.35rem;
+    border-bottom: 2px solid var(--rule-strong);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.005em;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+
+  code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.88em;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.08rem 0.36rem;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    margin: 0;
+    background: var(--term-bg);
+    color: var(--term-ink);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    padding: 0.9rem 1.05rem;
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+  pre .dim { color: var(--term-dim); }
+
+  /* numbered steps: this really is a sequence, each one depends on the last */
+  .steps { display: flex; flex-direction: column; gap: 1.4rem; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+
+  .steps > li {
+    position: relative;
+    padding-left: 2.6rem;
+    counter-increment: step;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.05rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    display: grid;
+    place-items: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 50%;
+  }
+
+  .two {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 1rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 2px;
+    padding: 1rem 1.1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .card.secondary { border-top-color: var(--rule-strong); }
+  .card p { font-size: 0.94rem; }
+
+  .chip {
+    align-self: flex-start;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.48rem;
+    border-radius: 2px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .card.secondary .chip { background: var(--surface-alt); color: var(--ink-soft); }
+
+  .warn {
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    border-radius: 2px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: var(--measure);
+  }
+  .warn h3 { color: var(--warn); }
+
+  .gotchas { display: flex; flex-direction: column; gap: 1.1rem; margin: 0; padding: 0; list-style: none; }
+  .gotchas li {
+    padding-left: 1rem;
+    border-left: 2px solid var(--rule-strong);
+    max-width: var(--measure);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .gotchas strong { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-family: "IBM Plex Sans Condensed", sans-serif; font-size: 0.9rem; }
+  th { text-align: left; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; padding: 0 0.7rem 0.45rem 0; border-bottom: 2px solid var(--rule-strong); }
+  td { padding: 0.5rem 0.7rem 0.5rem 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+  td.num { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  .foot { font-size: 0.9rem; color: var(--ink-soft); max-width: var(--measure); border-top: 1px solid var(--rule); padding-top: 1.2rem; }
+
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="kicker">LPR381 · For the group</p>
+    <h1>Running the solver</h1>
+    <p class="standfirst">
+      Everything is on <code>main</code> and finished: five algorithms, the full sensitivity suite,
+      duality, and the non-linear bonus. This is how to get it running on your machine, and the
+      three things that will waste your afternoon if nobody tells you.
+    </p>
+  </header>
+
+  <section>
+    <h2>Start here</h2>
+    <ol class="steps">
+
+      <li>
+        <h3>Install the .NET 8 SDK</h3>
+        <pre>winget install Microsoft.DotNet.SDK.8</pre>
+        <p>Then <b>open a new terminal</b>. The installer edits <code>PATH</code> and a shell that
+          was already open will keep telling you <code>dotnet</code> is not recognised. Check it with
+          <code>dotnet --version</code> — you want <code>8.0.x</code>.</p>
+      </li>
+
+      <li>
+        <h3>Get on main</h3>
+        <pre>git checkout main
+git pull</pre>
+        <div class="warn">
+          <h3>Do this before anything else</h3>
+          <p>The <code>person-a</code>, <code>person-b</code> and <code>person-c</code> branches are
+            all well behind — 11, 8 and 19 commits respectively. If you branch from your old one you
+            will be working against code that has since been fixed, and the merge will be painful.
+            Branch from <code>main</code>.</p>
+        </div>
+      </li>
+
+      <li>
+        <h3>Build</h3>
+        <pre>dotnet build -c Release</pre>
+        <p>Expect <code>0 Warning(s), 0 Error(s)</code>. Anything else means something is wrong on
+          your machine, not in the repo — say so in the group chat rather than pushing a fix.</p>
+      </li>
+
+      <li>
+        <h3>Run it</h3>
+        <pre>dotnet run --project src/solve/solve.csproj</pre>
+        <p>Or double-click the executable, which is the better option because the sample models are
+          copied next to it and every path in the menu then just works:</p>
+        <pre>src\solve\bin\Release\net8.0\solve.exe</pre>
+      </li>
+
+    </ol>
+  </section>
+
+  <section>
+    <h2>There are two executables</h2>
+    <div class="two">
+
+      <div class="card">
+        <span class="chip">The marked one</span>
+        <h3>solve.exe</h3>
+        <p>The menu-driven console program the brief asks for. Load a model, pick an algorithm,
+          run sensitivity analysis, write the output file. <b>This is what the video demonstrates.</b></p>
+        <p><code>src\solve\bin\Release\net8.0\solve.exe</code></p>
+      </div>
+
+      <div class="card secondary">
+        <span class="chip">Optional</span>
+        <h3>solve-gui.exe</h3>
+        <p>A window over the same solvers, added to make recording easier. Same results — it calls
+          the same code and shows the same text, you just click instead of type. Useful for the
+          sensitivity section, where the console wants index numbers.</p>
+        <p><code>src\solve.gui\bin\Release\net8.0-windows\solve-gui.exe</code></p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Trying it in thirty seconds</h2>
+    <p>From the console program, these keys load the classic max LP and solve it with the primal
+      simplex. Menu choices are numbers; the file path is typed as shown.</p>
+    <pre><span class="dim">1</span>   load a model
+<span class="dim">    </span>samples/lp_max.txt
+<span class="dim">2</span>   choose an algorithm
+<span class="dim">1</span>   primal simplex
+
+    Status: Optimal
+    Objective: 180.000</pre>
+    <p>Then <code>4</code> writes the whole thing — canonical form, every tableau iteration, the
+      result — to a text file you can open and read.</p>
+  </section>
+
+  <section>
+    <h2>Three things that will trip you</h2>
+    <ul class="gotchas">
+
+      <li>
+        <strong>Never call <code>ToString</code> or <code>TryParse</code> on a double without naming the culture.</strong>
+        <span>Our machines use a <b>comma</b> decimal separator. This has caused three separate bugs
+          already: tableaus printing <code>4,000</code> instead of <code>4.000</code>, and prompts
+          rejecting <code>2.5</code> as “not a number”. Print through
+          <code>OutputWriter.Format(value)</code>, and parse with
+          <code>CultureInfo.InvariantCulture</code>.</span>
+      </li>
+
+      <li>
+        <strong>Grid columns are not the same as variables.</strong>
+        <span>A variable declared <code>urs</code> occupies two columns and one declared
+          <code>-</code> is stored as its own negation, so column <em>j</em> is not variable
+          <em>j</em>. Use <code>CanonicalMatrix.RecoverOriginalValues(...)</code> rather than reading
+          the leading columns. Assuming otherwise works on every model that doesn’t use those two
+          restrictions, then quietly returns wrong answers on the two that do.</span>
+      </li>
+
+      <li>
+        <strong>Branch, don’t push to main.</strong>
+        <span>Both times work went straight to <code>main</code> it carried defects a review would
+          have caught — eight between them. Work on a branch and merge, so somebody else sees it
+          first.</span>
+      </li>
+
+    </ul>
+    <p>There is more of this in the <b>Contract details that are easy to get wrong</b> section of the
+      README. Read it before writing anything that touches a tableau.</p>
+  </section>
+
+  <section>
+    <h2>What is where</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td><code>src/solve/</code></td><td>The console program — parser, algorithms, sensitivity, output</td></tr>
+          <tr><td><code>src/solve.gui/</code></td><td>The optional window</td></tr>
+          <tr><td><code>samples/</code></td><td>15 test models, copied next to both executables when you build</td></tr>
+          <tr><td><code>docs/demo-run-sheet.html</code></td><td>Take-by-take order for recording the video — open it in a browser</td></tr>
+          <tr><td><code>tools/build-check.ps1</code></td><td>Fallback build for a machine with no SDK. You should not need it</td></tr>
+          <tr><td><code>README.md</code></td><td>Input file format, the shared contracts, sample list</td></tr>
+          <tr><td><code>WORK_SPLIT.md</code></td><td>Who owned what, and the mark allocation</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">
+    If a build or a run does not match what is written here, check you are on <code>main</code> and
+    have pulled. Every command above was run on a clean Release build of the current
+    <code>main</code>.
+  </p>
+
+</div>
+</body>
+</html>

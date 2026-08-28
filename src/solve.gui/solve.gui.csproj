@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A window over the same solvers, for demonstrating the program without typing menu
+       numbers on camera. The console solve.exe is unchanged and is still the menu-driven
+       executable the brief asks for; this is additional, not a replacement. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>solve-gui</AssemblyName>
+    <RootNamespace>Solve.Gui</RootNamespace>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Every algorithm, the parser and the output writer come from the console project.
+         Nothing is reimplemented here, so the window can only ever show what the verified
+         code produced. -->
+    <ProjectReference Include="..\solve\solve.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\samples\*.txt" CopyToOutputDirectory="PreserveNewest" LinkBase="samples" />
+  </ItemGroup>
+
+</Project>

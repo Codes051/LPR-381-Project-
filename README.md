@@ -36,6 +36,19 @@ dotnet build -c Release
 The output lands at `src/solve/bin/Release/net8.0/solve.exe`, with the sample models
 copied alongside it.
 
+### The window (optional)
+
+`dotnet build` also produces `src/solve.gui/bin/Release/net8.0-windows/solve-gui.exe` — a
+window over the same solvers, added to make the demo video easier to record. Choosing a
+model and an algorithm is a click, variables and constraints are picked **by name** rather
+than by a zero-based column index, and the tableaus get a scrollable monospace pane instead
+of needing a 170-column terminal.
+
+It is **additional, not a replacement**. `solve.exe` is still the menu-driven executable the
+brief asks for, and it is unchanged. The window reimplements nothing: it calls the same
+`ISolver` implementations and displays the exact string `OutputWriter` produces, so it
+cannot disagree with the console.
+
 ## Project layout
 
 ```
@@ -77,6 +90,7 @@ src/solve/
   Exceptions/
     LpException.cs            user-facing failures, caught by the menu
 samples/                      test models, copied next to the exe
+src/solve.gui/                optional window over the same solvers, for the video
 ```
 
 ## Sample models
